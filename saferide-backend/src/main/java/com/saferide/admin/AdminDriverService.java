@@ -126,6 +126,7 @@ public class AdminDriverService {
                 driver.getLicenseNumber(),
                 driver.getVerificationStatus(),
                 driver.getOnlineStatus(),
+                driver.getReliabilityScore(),
                 driver.getCreatedAt());
     }
 }

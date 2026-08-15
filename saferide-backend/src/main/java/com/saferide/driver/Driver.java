@@ -25,10 +25,26 @@ import lombok.Setter;
  * DRIVER role. {@code verificationStatus} covers the driver as a person
  * (license reviewed by an admin) - see {@link com.saferide.vehicle.Vehicle}
  * and {@link DriverDocument} for the per-vehicle and per-document
- * verification that ride matching (Phase 6) will also require before a
- * driver can actually accept rides. Live location is Redis-backed
- * starting Phase 11 - {@code currentLatitude}/{@code currentLongitude}
- * here are the last-known fallback, not the hot path.
+ * verification that ride matching (Phase 6) also requires before a driver
+ * can actually accept rides.
+ *
+ * <p>The spec's separate DRIVER_RELIABILITY entity is deliberately folded
+ * into these same rate columns rather than duplicated into a second
+ * table: {@code acceptanceRate}/{@code cancellationRate}/
+ * {@code completionRate}/{@code reliabilityScore} already lived here since
+ * Phase 2, so a parallel table would just be the same numbers twice with
+ * a real risk of the two drifting apart. {@code onTimeRate} and
+ * {@code complaintCount} (Phase 6) complete the set - see
+ * {@link com.saferide.driver.ReliabilityCalculator} for how they combine
+ * into {@code reliabilityScore}. {@code averageRating} in the spec is
+ * just {@link #rating} by another name, updated once ratings exist
+ * (Phase 12).
+ *
+ * <p>{@code currentLatitude}/{@code currentLongitude} are written by
+ * {@code PUT /api/drivers/location} (Phase 6) and are MySQL's
+ * source-of-truth copy - Redis becomes the high-frequency hot path for
+ * these starting Phase 11, without changing where the authoritative value
+ * lives.
  */
 @Entity
 @Table(
@@ -82,6 +98,14 @@ public class Driver extends Auditable {
 
     @Column(name = "reliability_score", nullable = false)
     private Double reliabilityScore = 70.0;
+
+    /** Defaults to 100 (benefit of the doubt) until real arrival-time tracking exists to earn or lose it. */
+    @Column(name = "on_time_rate", nullable = false)
+    private Double onTimeRate = 100.0;
+
+    /** Incremented once the complaint system (Phase 12) exists; 0 until then. */
+    @Column(name = "complaint_count", nullable = false)
+    private Integer complaintCount = 0;
 
     public boolean isVerified() {
         return verificationStatus == VerificationStatus.VERIFIED;

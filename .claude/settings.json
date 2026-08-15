@@ -3,7 +3,9 @@
     "allow": [
       "Bash(docker info *)",
       "Bash(mvn -q -DskipTests package)",
-      "Bash(mvn -q test -Dtest=RideIntegrationTest,RideStateMachineTest)"
+      "Bash(mvn -q test -Dtest=RideIntegrationTest,RideStateMachineTest)",
+      "Bash(mvn -q test -Dtest=DriverMatchScorerTest,ReliabilityCalculatorTest)",
+      "Bash(mvn -q test -Dtest=MatchingIntegrationTest)"
     ]
   }
 }

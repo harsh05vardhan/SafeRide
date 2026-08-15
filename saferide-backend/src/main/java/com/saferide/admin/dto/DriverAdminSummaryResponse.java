@@ -13,5 +13,6 @@ public record DriverAdminSummaryResponse(
         String licenseNumber,
         VerificationStatus verificationStatus,
         DriverOnlineStatus onlineStatus,
+        Double reliabilityScore,
         Instant createdAt) {
 }

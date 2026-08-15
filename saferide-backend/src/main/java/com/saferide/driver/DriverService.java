@@ -68,6 +68,19 @@ public class DriverService {
         return toProfileResponse(driverRepository.save(driver));
     }
 
+    /**
+     * {@code PUT /api/drivers/location}. Source-of-truth write to MySQL -
+     * see the class-level note on {@link Driver} about where Redis fits
+     * in starting Phase 11.
+     */
+    @Transactional
+    public DriverProfileResponse updateLocation(Long userId, double latitude, double longitude) {
+        Driver driver = getDriverByUserId(userId);
+        driver.setCurrentLatitude(latitude);
+        driver.setCurrentLongitude(longitude);
+        return toProfileResponse(driverRepository.save(driver));
+    }
+
     /** Public: other domains (vehicle, admin, later matching) resolve a driver's own record through this too. */
     public Driver getDriverByUserId(Long userId) {
         return driverRepository.findByUserId(userId)
@@ -91,6 +104,10 @@ public class DriverService {
                 driver.getAcceptanceRate(),
                 driver.getCancellationRate(),
                 driver.getCompletionRate(),
-                driver.getReliabilityScore());
+                driver.getOnTimeRate(),
+                driver.getComplaintCount(),
+                driver.getReliabilityScore(),
+                driver.getCurrentLatitude(),
+                driver.getCurrentLongitude());
     }
 }

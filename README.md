@@ -6,8 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 5 of 18 complete (fare engine, fare breakdown, **Fare
-> Lock**, destination changes). See [Roadmap](#roadmap) below for what's
+> **Status:** Phase 6 of 18 complete (driver matching, reliability score,
+> automatic reassignment). See [Roadmap](#roadmap) below for what's
 > implemented vs. planned.
 
 ## Table of contents
@@ -129,12 +129,15 @@ safeRide/
 │       ├── SafeRideApplication.java
 │       ├── auth/            JWT issuance/refresh/logout, register/login, security filter
 │       ├── user/            User, Role, CustomerController, profile self-service
-│       ├── driver/          Driver profile, status toggle, documents, self-registration
+│       ├── driver/          Driver profile, status/location, documents, self-registration,
+│       │                    ReliabilityCalculator + DriverReliabilityService
 │       ├── vehicle/         Vehicle entity, driver self-service registration/activation
-│       ├── ride/            Ride entity/state machine, booking, accept/arrive/start/complete/cancel
-│       ├── map/             MapService abstraction - MockMapService today, Google/Mapbox later
+│       ├── ride/            Ride entity/state machine, booking, accept/decline/arrive/start/
+│       │                    complete/cancel, ActiveRideStatuses (shared with matching)
+│       ├── map/             MapService abstraction + GeoUtils - MockMapService today, Google/Mapbox later
 │       ├── fare/            FareCalculator, Fare + FareLock, the Fare Lock guarantee itself
-│       ├── matching/        (Phase 6)
+│       ├── matching/        DriverMatchScorer, DriverMatchingService, RideDriverExclusion -
+│       │                    proactive assignment + automatic reassignment
 │       ├── payment/         (Phase 12)
 │       ├── rating/          (Phase 12)
 │       ├── safety/          (Phase 12)
@@ -180,15 +183,28 @@ Every package/folder above already exists in the repo (most with a
 Full entity list, columns and constraints are specified in the project brief
 this README accompanies; they land in the codebase starting Phase 2 (`USER`,
 `ROLE`), Phase 3 (`VEHICLE`, `DRIVER_DOCUMENT`, `AUDIT_LOG`), Phase 4
-(`RIDE`) and Phase 5 (`FARE`, `FARE_LOCK`). Summary of the core
-relationships:
+(`RIDE`), Phase 5 (`FARE`, `FARE_LOCK`) and Phase 6 (`RIDE_DRIVER_EXCLUSIONS`
+- see below). Summary of the core relationships:
 
 - One `USER` has at most one `DRIVER` profile (1:0..1), can place many
   `RIDE`s as a customer, and can have many `RIDE`s as a driver.
 - One `DRIVER` has **one or more** `VEHICLE`s (added in Phase 3 as a proper
   1:N - a driver can register more than one and switch which is `active`,
-  but only the active one is ever visible to matching) and, eventually, one
-  `DRIVER_RELIABILITY` record.
+  but only the active one is ever visible to matching).
+- The spec's separate `DRIVER_RELIABILITY` entity is **not** a second
+  table - its columns (`acceptanceRate`, `cancellationRate`,
+  `completionRate`, `onTimeRate`, `complaintCount`, `reliabilityScore`)
+  already live directly on `DRIVER` (most since Phase 2), updated in place
+  after every ride event by `DriverReliabilityService` rather than
+  duplicated into a row that could drift out of sync with the "current"
+  numbers everything else reads. `averageRating` in the spec is just
+  `Driver.rating` by another name.
+- `RIDE_DRIVER_EXCLUSIONS` (Phase 6, `matching` package) records "driver X
+  is permanently ruled out for ride Y" whenever they decline an assignment
+  or cancel after accepting - the mechanism behind "a previously
+  cancelled/declined driver must not receive the same ride again", checked
+  by both the proactive matching engine and the `/api/rides/open`
+  fallback.
 - `VerificationStatus` (`PENDING`/`VERIFIED`/`REJECTED`) is one shared enum
   used by `DRIVER`, `VEHICLE` and `DRIVER_DOCUMENT` alike - an admin reviews
   the person, each vehicle, and each document as independent decisions, not
@@ -278,6 +294,62 @@ See [`FareService`](saferide-backend/src/main/java/com/saferide/fare/FareService
 [`FareIntegrationTest`](saferide-backend/src/test/java/com/saferide/fare/FareIntegrationTest.java)
 for the full mechanism and its test coverage.
 
+### Matching, reliability, and automatic reassignment
+
+Phase 4's "driver browses open requests" model is now the *fallback*, not
+the primary path:
+
+1. **Confirming a fare triggers matching.** The instant a ride reaches
+   `SEARCHING_DRIVER` (fresh confirm, a decline, or a driver cancellation),
+   `RideService.attemptAutoAssign` asks `DriverMatchingService` for the
+   best eligible driver and, if one exists, proactively assigns them
+   (`DRIVER_ASSIGNED`) - no driver ever had to browse anything.
+2. **The scoring algorithm balances, it doesn't just pick nearest.**
+   `DriverMatchScorer` combines distance, rating, reliability, acceptance
+   rate and ETA as weighted, configurable (`app.matching.*`) components,
+   and subtracts a cancellation-rate penalty. `DriverMatchScorerTest`
+   reproduces the spec's own example verbatim: a driver 1.2km away with a
+   4.8 rating and 3% cancellation rate outscores one 0.5km away with a 3.9
+   rating and 20% cancellation rate.
+3. **A decline permanently excludes that driver from that ride.**
+   `POST /api/rides/{id}/decline` records a `RideDriverExclusion` row and
+   immediately re-runs matching for the next-best candidate. That
+   exclusion is checked by *both* the proactive path and the
+   `/api/rides/open` fallback, so a declined driver can never claw the
+   ride back either way.
+4. **A driver cancellation auto-reassigns instead of dead-ending.**
+   `RideStateMachine`'s `DRIVER_CANCELLED -> SEARCHING_DRIVER` edge
+   (added in Phase 5, used for the first time here) is exactly for this:
+   cancelling after accepting excludes that driver, updates their
+   reliability, and immediately tries the next-best one - the customer's
+   original request continues rather than dying.
+5. **Reliability updates after every relevant event, no full history
+   scan.** `DriverReliabilityService` nudges the relevant rate
+   (`acceptanceRate`, `completionRate`, `cancellationRate`) with an
+   exponential moving average on acceptance/decline/completion/
+   cancellation, then `ReliabilityCalculator` recomputes the single 0-100
+   `reliabilityScore` other drivers are compared against - both are
+   configurable via `app.reliability.*`. `rating` and `complaintCount`
+   stay at their seeded defaults until ratings (Phase 12) and complaints
+   (Phase 12) actually exist to feed them.
+6. **If nobody qualifies, the ride waits - it doesn't fail.** No eligible
+   driver (none online, none with a reported location, none with a
+   verified matching vehicle within `maxRadiusKm`) just leaves the ride at
+   `SEARCHING_DRIVER`, discoverable via the `/api/rides/open` fallback the
+   moment a suitable driver comes online.
+
+Driver location (`PUT /api/drivers/location`) writes straight to MySQL -
+the architecture's stated source of truth - via plain candidate queries in
+`DriverMatchingService`; that's the deliberate Phase-11 replacement point,
+where the *same method signature* starts querying Redis's geo-index
+instead of scanning the `drivers` table.
+
+See [`DriverMatchingService`](saferide-backend/src/main/java/com/saferide/matching/DriverMatchingService.java),
+[`DriverMatchScorer`](saferide-backend/src/main/java/com/saferide/matching/DriverMatchScorer.java),
+[`DriverReliabilityService`](saferide-backend/src/main/java/com/saferide/driver/DriverReliabilityService.java),
+and [`MatchingIntegrationTest`](saferide-backend/src/test/java/com/saferide/matching/MatchingIntegrationTest.java)
+for the full mechanism and its test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -303,7 +375,7 @@ live via Swagger UI once the app is running:
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-### Live endpoints (Phase 1–5)
+### Live endpoints (Phase 1–6)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -314,13 +386,14 @@ live via Swagger UI once the app is running:
 | POST | `/api/auth/logout` | Public | Revokes the given refresh token (idempotent) |
 | GET / PUT | `/api/customers/profile` | `CUSTOMER` | Always operates on the caller's own account |
 | POST | `/api/drivers/register` | Any authenticated user | Adds the DRIVER role + driver profile to the current account; re-login/refresh needed to pick up the new role |
-| GET | `/api/drivers/profile` | `DRIVER` | |
+| GET | `/api/drivers/profile` | `DRIVER` | Includes `onTimeRate`, `complaintCount`, `reliabilityScore`, current location |
 | PUT | `/api/drivers/status` | `DRIVER` | `{onlineStatus: ONLINE\|OFFLINE}`; going `ONLINE` requires an admin-verified driver |
+| PUT | `/api/drivers/location` | `DRIVER` | `{latitude, longitude}` - MySQL source-of-truth write; what makes a driver a matching candidate |
 | POST / GET | `/api/drivers/documents` | `DRIVER` | Submit/list documents for review (`documentUrl` references external storage - no upload endpoint yet) |
 | GET | `/api/drivers/rides` | `DRIVER` | Own ride history, paginated |
 | POST / GET | `/api/vehicles` | `DRIVER` | Register a vehicle (auto-becomes the active one) / list own vehicles |
 | PUT | `/api/vehicles/{id}/activate` | `DRIVER` | Switch which owned vehicle is active |
-| GET | `/api/admin/drivers` | `ADMIN` | `?status=PENDING\|VERIFIED\|REJECTED&page=&size=` |
+| GET | `/api/admin/drivers` | `ADMIN` | `?status=PENDING\|VERIFIED\|REJECTED&page=&size=`; includes `reliabilityScore` |
 | GET | `/api/admin/drivers/{id}` | `ADMIN` | Driver + vehicles + documents in one call |
 | PUT | `/api/admin/drivers/{id}/approve` \| `/block` \| `/unblock` | `ADMIN` | `/block` also forces the driver offline |
 | PUT | `/api/admin/drivers/vehicles/{id}/approve` \| `/reject` | `ADMIN` | |
@@ -328,16 +401,17 @@ live via Swagger UI once the app is running:
 | POST | `/api/rides/estimate` | `CUSTOMER` | Distance/ETA preview via `MapService` - no ride created |
 | POST | `/api/rides` | `CUSTOMER` | Creates a ride at `REQUESTED` (not yet driver-visible - see [Fare Lock](#fare-lock--how-the-guarantee-actually-holds)); rejects a second active ride per customer (409 `ACTIVE_RIDE_EXISTS`) |
 | GET | `/api/rides` | `CUSTOMER` | Own ride history, paginated |
-| GET | `/api/rides/open` | `DRIVER` | Phase 4's naive "browse open requests" (filtered by the driver's active vehicle type) - only ever contains fare-locked rides |
+| GET | `/api/rides/open` | `DRIVER` | Fallback browse-and-claim for whenever proactive matching hasn't (yet) found anyone - excludes any ride this driver already declined/cancelled |
 | GET | `/api/rides/{id}` | Customer, assigned driver, or `ADMIN` | `otp` is only included for the ride's own customer |
 | GET | `/api/rides/{id}/fare` | Customer, assigned driver, or `ADMIN` | Current breakdown + lock status; `lockStatus` is absent until first confirmed |
-| POST | `/api/rides/{id}/fare/confirm` | `CUSTOMER` | **Locks the fare** and is what actually advances `REQUESTED → SEARCHING_DRIVER`; confirming an already-locked fare → `409 FARE_LOCKED` |
+| POST | `/api/rides/{id}/fare/confirm` | `CUSTOMER` | **Locks the fare**, advances `REQUESTED → SEARCHING_DRIVER`, and triggers the first proactive matching attempt; confirming an already-locked fare → `409 FARE_LOCKED` |
 | PUT | `/api/rides/{id}/destination` | `CUSTOMER` | Recalculates distance/fare and **unlocks** the fare (never edits the locked amount in place); only before a driver is assigned; pulls a searching ride back to `REQUESTED` until re-confirmed |
-| POST | `/api/rides/{id}/accept` | `DRIVER` | Self-claim (Phase 4); requires `ONLINE` + verified driver + verified, type-matching active vehicle; `409 CONCURRENT_MODIFICATION` if another driver won the race |
+| POST | `/api/rides/{id}/accept` | `DRIVER` | Confirms a proactive assignment, **or** self-claims an open ride as a fallback; requires `ONLINE` + verified driver + verified, type-matching active vehicle; `409 CONCURRENT_MODIFICATION` if another driver won the race |
+| POST | `/api/rides/{id}/decline` | `DRIVER` (assigned) | Turns down a proactive assignment - permanently excludes this driver from the ride and immediately reassigns to the next-best candidate |
 | POST | `/api/rides/{id}/arrive` | `DRIVER` (assigned) | Generates the 4-digit OTP |
 | POST | `/api/rides/{id}/start` | `DRIVER` (assigned) | `{otp}`; wrong code → `400 INVALID_OTP` |
 | POST | `/api/rides/{id}/complete` | `DRIVER` (assigned) | Auto-advances straight to `PAYMENT_PENDING` |
-| POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED`; driver → `DRIVER_CANCELLED`; blocked once `RIDE_STARTED` |
+| POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED` (terminal); driver → excluded + reliability updated + **automatically reassigned** (or back to `SEARCHING_DRIVER` if nobody's left); blocked once `RIDE_STARTED` |
 | POST | `/api/fare/calculate` | `CUSTOMER` | Standalone preview (e.g. one call per vehicle card on the ride-options page) - computes but never persists anything |
 
 Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
@@ -444,10 +518,12 @@ none of them require Docker/MySQL to be running:
 - [`RideIntegrationTest`](saferide-backend/src/test/java/com/saferide/ride/RideIntegrationTest.java) — full HTTP-shaped ride lifecycle: estimate → book → confirm fare → a driver with the wrong vehicle type never sees it in `/api/rides/open` → the right driver accepts → a second driver is too late (`409 INVALID_RIDE_STATE`) → arriving generates an OTP visible only to the customer → wrong OTP rejected → correct OTP starts the ride → completing auto-advances to `PAYMENT_PENDING` → a ride that far along can no longer be cancelled → a stranger can't view or touch the ride → a customer can't book a second active ride → customer-cancel vs. driver-cancel produce `CANCELLED` vs. `DRIVER_CANCELLED` respectively.
 - [`FareCalculatorTest`](saferide-backend/src/test/java/com/saferide/fare/FareCalculatorTest.java) — matches the spec's worked example (8km/20min → ₹210) exactly, discount reduces the total by exactly its amount, a discount larger than the subtotal is clamped rather than producing a negative fare, different vehicle types produce different totals for an identical trip, and negative distance/duration/an unconfigured vehicle type are all rejected.
 - [`FareIntegrationTest`](saferide-backend/src/test/java/com/saferide/fare/FareIntegrationTest.java) — the Fare Lock guarantee end to end: a preview differs by vehicle type; a new ride's fare starts unlocked; confirming locks it (and confirming twice fails with `409 FARE_LOCKED`); a driver can view the locked amount but has no endpoint that can change it (`403` on the one write path, which is customer-only); changing the destination unlocks the fare, recalculates it, and pulls an already-searching ride back out of `/api/rides/open` until the customer re-confirms the *new* amount; a destination change is rejected outright once a driver has accepted.
+- [`DriverMatchScorerTest`](saferide-backend/src/test/java/com/saferide/matching/DriverMatchScorerTest.java) — reproduces the spec's own example verbatim (a driver further away but better-rated with a lower cancellation rate outranks the nearest one), plus isolated checks that distance, rating, and cancellation rate each move the score in the right direction, and that out-of-radius distance never makes the score negative.
+- [`ReliabilityCalculatorTest`](saferide-backend/src/test/java/com/saferide/driver/ReliabilityCalculatorTest.java) — a perfect driver scores exactly 100, the worst possible driver scores exactly 0 (never negative), cancellation rate reduces the score proportionally to its configured weight, and the complaint penalty is capped rather than unbounded.
+- [`MatchingIntegrationTest`](saferide-backend/src/test/java/com/saferide/matching/MatchingIntegrationTest.java) — the full Phase 6 pipeline through real HTTP requests: confirming a fare proactively assigns the best of several otherwise-identical drivers; a driver not assigned can't accept; the assigned driver declines and is permanently excluded while matching immediately reassigns to the next-best driver; the decliner can never claw the ride back through *either* `/api/rides/{id}/accept` or the `/api/rides/open` fallback; declining/cancelling measurably move `acceptanceRate`/`cancellationRate`; a post-acceptance cancellation auto-reassigns to a third driver instead of dead-ending; and a ride with zero eligible drivers waits at `SEARCHING_DRIVER` until one comes online and self-claims it.
 
-Domain-level tests (matching, reliability scoring, concurrency stress) are
-added alongside each phase that introduces the behavior; Testcontainers
-(real MySQL in tests) arrives in Phase 14.
+Testcontainers (real MySQL in tests, replacing today's H2 profile for the
+integration suite) arrives in Phase 14.
 
 ## CI/CD
 
@@ -472,8 +548,8 @@ events are in place.
 | 3 | Vehicle, driver verification, driver status | ✅ Done |
 | 4 | Ride booking, ride state machine, ride APIs | ✅ Done |
 | 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ✅ Done |
-| 6 | Driver matching, reliability score, automatic reassignment | ⏳ Next |
-| 7 | Customer frontend (login → tracking) | Planned |
+| 6 | Driver matching, reliability score, automatic reassignment | ✅ Done |
+| 7 | Customer frontend (login → tracking) | ⏳ Next |
 | 8 | Driver frontend (dashboard → earnings) | Planned |
 | 9 | Admin frontend | Planned |
 | 10 | WebSocket/STOMP — real-time status & location | Planned |
@@ -488,7 +564,7 @@ events are in place.
 
 ---
 
-### Seed / demo credentials (Phase 2–3)
+### Seed / demo credentials (Phase 2–6)
 
 Seeded automatically on startup under the `dev` profile only (never `test`
 or `prod`) by
@@ -498,7 +574,7 @@ log in with these immediately, no registration needed:
 | Email | Password | Role | Notes |
 |---|---|---|---|
 | `customer@example.com` | `Password123!` | CUSTOMER | |
-| `driver@example.com` | `Password123!` | DRIVER | Pre-verified, with a pre-verified active vehicle (2020 Maruti Suzuki Dzire) - ready to go `ONLINE` immediately, skipping the admin-verification step below |
+| `driver@example.com` | `Password123!` | DRIVER | Pre-verified, `ONLINE`, with a pre-verified active vehicle (2020 Maruti Suzuki Dzire) and a reported location (Guwahati Railway Station) - a real matching candidate immediately, no setup needed |
 | `admin@example.com` | `Password123!` | ADMIN | Use this to review other drivers via `GET/PUT /api/admin/drivers/**` |
 
 These are intentionally public, dev-only credentials — never reachable in

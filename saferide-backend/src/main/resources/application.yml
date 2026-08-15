@@ -62,6 +62,31 @@ app:
         base-fare: 80.0
         per-km-rate: 20.0
         per-minute-rate: 2.5
+  matching:
+    # Weights for DriverMatchScorer. Calibrated so a driver who is a bit further away
+    # but meaningfully more reliable outscores the nearest-but-worse one - see
+    # DriverMatchScorerTest for the exact worked example from the spec.
+    distance-weight: 25.0
+    rating-weight: 25.0
+    reliability-weight: 20.0
+    acceptance-weight: 10.0
+    eta-weight: 20.0
+    cancellation-penalty-weight: 30.0
+    max-radius-km: 5.0
+    max-eta-minutes: 15.0
+    average-speed-kmh: 25.0
+  reliability:
+    # Weights for ReliabilityCalculator - sum of the four positive weights is the
+    # maximum possible score (100) before any cancellation/complaint penalty.
+    rating-weight: 30.0
+    acceptance-weight: 25.0
+    completion-weight: 25.0
+    on-time-weight: 20.0
+    cancellation-penalty-weight: 30.0
+    complaint-penalty-per-complaint: 5.0
+    complaint-penalty-cap: 30.0
+    # How much one new ride event shifts a rate (exponential moving average) - see DriverReliabilityService.
+    ema-alpha: 0.2
 
 springdoc:
   swagger-ui:

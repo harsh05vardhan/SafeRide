@@ -14,5 +14,9 @@ public record DriverProfileResponse(
         Double acceptanceRate,
         Double cancellationRate,
         Double completionRate,
-        Double reliabilityScore) {
+        Double onTimeRate,
+        Integer complaintCount,
+        Double reliabilityScore,
+        Double currentLatitude,
+        Double currentLongitude) {
 }

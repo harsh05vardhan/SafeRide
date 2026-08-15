@@ -12,10 +12,13 @@ public interface RideRepository extends JpaRepository<Ride, Long> {
 
     Page<Ride> findByDriverIdOrderByCreatedAtDesc(Long driverId, Pageable pageable);
 
-    /** Phase 4's naive "browse open requests" model - superseded by proactive assignment in Phase 6. */
+    /** Fallback for a ride matching couldn't auto-assign - a driver can still self-claim it manually. */
     Page<Ride> findByStatusAndVehicleTypeOrderByCreatedAtAsc(RideStatus status, VehicleType vehicleType, Pageable pageable);
 
     boolean existsByDriverIdAndStatusIn(Long driverId, Collection<RideStatus> statuses);
+
+    /** Same "is this driver already busy" check, excluding one ride - lets a driver accept the very ride they were just proactively assigned to. */
+    boolean existsByDriverIdAndStatusInAndIdNot(Long driverId, Collection<RideStatus> statuses, Long excludedRideId);
 
     boolean existsByCustomerIdAndStatusIn(Long customerId, Collection<RideStatus> statuses);
 }

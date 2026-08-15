@@ -1,6 +1,7 @@
 package com.saferide.driver;
 
 import com.saferide.common.VerificationStatus;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,4 +16,7 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
     boolean existsByLicenseNumber(String licenseNumber);
 
     Page<Driver> findByVerificationStatus(VerificationStatus status, Pageable pageable);
+
+    /** Matching's candidate pool - narrowed further (vehicle, distance, exclusions, busy check) in {@code DriverMatchingService}. */
+    List<Driver> findByOnlineStatusAndVerificationStatus(DriverOnlineStatus onlineStatus, VerificationStatus verificationStatus);
 }

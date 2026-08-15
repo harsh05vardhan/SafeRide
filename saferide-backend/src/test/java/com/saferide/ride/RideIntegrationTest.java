@@ -258,8 +258,13 @@ class RideIntegrationTest {
 
         mockMvc.perform(post("/api/rides/" + rideId2 + "/accept").header("Authorization", "Bearer " + driverToken))
                 .andExpect(status().isOk());
+        // Phase 6: a driver-cancel automatically tries to reassign rather than just terminating -
+        // with no other eligible driver available here (nobody else has reported a location), it
+        // lands back on SEARCHING_DRIVER instead of staying DRIVER_CANCELLED. The full reassignment
+        // path (excluding the cancelling driver, finding the next-best one) is covered by
+        // MatchingIntegrationTest.
         mockMvc.perform(post("/api/rides/" + rideId2 + "/cancel").header("Authorization", "Bearer " + driverToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("DRIVER_CANCELLED"));
+                .andExpect(jsonPath("$.data.status").value("SEARCHING_DRIVER"));
     }
 }

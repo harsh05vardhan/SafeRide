@@ -4,6 +4,7 @@ import com.saferide.auth.AuthenticatedUser;
 import com.saferide.common.VerificationStatus;
 import com.saferide.driver.Driver;
 import com.saferide.driver.DriverOnlineStatus;
+import com.saferide.driver.DriverReliabilityService;
 import com.saferide.driver.DriverService;
 import com.saferide.exception.DriverNotVerifiedException;
 import com.saferide.exception.DriverUnavailableException;
@@ -16,6 +17,8 @@ import com.saferide.fare.FareService;
 import com.saferide.fare.dto.RideFareResponse;
 import com.saferide.map.MapService;
 import com.saferide.map.RouteEstimate;
+import com.saferide.matching.DriverMatchingService;
+import com.saferide.matching.ExclusionReason;
 import com.saferide.ride.dto.RideCreateRequest;
 import com.saferide.ride.dto.RideDestinationChangeRequest;
 import com.saferide.ride.dto.RideDriverInfo;
@@ -30,11 +33,11 @@ import com.saferide.vehicle.Vehicle;
 import com.saferide.vehicle.VehicleService;
 import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,17 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Owns the ride lifecycle. Every status change goes through
  * {@link RideStateMachine} - this class decides <em>who is allowed to
  * trigger</em> a transition and what side effects it has (OTP generation,
- * timestamps), the state machine decides whether the transition itself is
- * legal.
- *
- * <p>Phase 4 has no driver-matching engine yet (Phase 6), so
- * {@link #acceptRide} is a naive self-claim: any online, verified driver
- * with a matching, verified active vehicle may accept an open request,
- * with {@code @Version} optimistic locking as the concurrency guard against
- * two drivers claiming the same ride. Phase 6 replaces the "driver browses
- * {@link #listOpenRides}" model with proactive assignment; this service's
- * public contract (accept/arrive/start/complete/cancel) does not need to
- * change when that happens.
+ * timestamps, matching, reliability updates), the state machine decides
+ * whether the transition itself is legal.
  *
  * <p><b>Fare Lock (Phase 5):</b> {@link #createRide} leaves a new ride at
  * {@code REQUESTED} - not yet visible to any driver. Only
@@ -61,24 +55,29 @@ import org.springframework.transaction.annotation.Transactional;
  * advances it to {@code SEARCHING_DRIVER}. If {@link #changeDestination}
  * is called on a ride that's already searching, the fare is unlocked and
  * the ride is pulled back to {@code REQUESTED} until the customer
- * re-confirms. The result: a driver can never see, let alone accept, a
- * ride whose fare isn't currently locked - by construction, not by a
- * separate runtime check at accept time.
+ * re-confirms.
+ *
+ * <p><b>Matching (Phase 6):</b> the moment a ride reaches
+ * {@code SEARCHING_DRIVER} - via {@link #confirmFare}, a decline, or a
+ * driver cancellation - {@link #attemptAutoAssign} asks
+ * {@code DriverMatchingService} for the best eligible driver and, if one
+ * exists, proactively assigns them ({@code DRIVER_ASSIGNED}). That driver
+ * must then explicitly {@link #acceptRide} or {@link #declineRide}; a
+ * decline excludes them from this ride forever and immediately re-runs
+ * matching for the next-best driver. {@link #listOpenRides} /
+ * {@link #acceptRide}'s self-claim branch remain as a fallback for when
+ * matching finds nobody (e.g. no driver has reported a location yet).
+ *
+ * <p>Driver cancellation ({@link #cancelRide}) works the same way:
+ * records the driver as excluded, updates their reliability, and
+ * immediately tries to reassign the same ride to someone else rather than
+ * leaving the customer to start over - {@code RideStateMachine}'s
+ * {@code DRIVER_CANCELLED -> SEARCHING_DRIVER} edge exists exactly for
+ * this.
  */
 @Service
 @RequiredArgsConstructor
 public class RideService {
-
-    /** A customer with a ride in any of these statuses can't book another one until it resolves. */
-    private static final Set<RideStatus> ACTIVE_CUSTOMER_STATUSES = EnumSet.of(
-            RideStatus.REQUESTED, RideStatus.SEARCHING_DRIVER, RideStatus.DRIVER_ASSIGNED,
-            RideStatus.DRIVER_ACCEPTED, RideStatus.DRIVER_ARRIVED, RideStatus.RIDE_STARTED,
-            RideStatus.DRIVER_CANCELLED);
-
-    /** A driver already committed to one of these can't accept a second ride. */
-    private static final Set<RideStatus> ACTIVE_DRIVER_STATUSES = EnumSet.of(
-            RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_ACCEPTED,
-            RideStatus.DRIVER_ARRIVED, RideStatus.RIDE_STARTED);
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -89,6 +88,8 @@ public class RideService {
     private final DriverService driverService;
     private final VehicleService vehicleService;
     private final FareService fareService;
+    private final DriverMatchingService matchingService;
+    private final DriverReliabilityService reliabilityService;
 
     public RideEstimateResponse estimateRoute(RideEstimateRequest request) {
         RouteEstimate estimate = mapService.estimateRoute(
@@ -99,7 +100,7 @@ public class RideService {
 
     @Transactional
     public RideResponse createRide(Long customerUserId, RideCreateRequest request) {
-        if (rideRepository.existsByCustomerIdAndStatusIn(customerUserId, ACTIVE_CUSTOMER_STATUSES)) {
+        if (rideRepository.existsByCustomerIdAndStatusIn(customerUserId, ActiveRideStatuses.CUSTOMER)) {
             throw new DuplicateResourceException(
                     "You already have an active ride in progress", "ACTIVE_RIDE_EXISTS");
         }
@@ -142,7 +143,8 @@ public class RideService {
     /**
      * Locks the ride's current fare and, the first time this is called for
      * a ride, is what actually starts the search - see the class-level
-     * Fare Lock note above.
+     * Fare Lock note above. Locking is also what triggers the first
+     * matching attempt.
      */
     @Transactional
     public RideFareResponse confirmFare(Long customerUserId, Long rideId) {
@@ -155,6 +157,7 @@ public class RideService {
 
         if (ride.getStatus() == RideStatus.REQUESTED) {
             transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+            attemptAutoAssign(ride);
             rideRepository.save(ride);
         }
         return response;
@@ -164,7 +167,7 @@ public class RideService {
      * Recalculates distance/fare for a new destination and unlocks the
      * previous amount - "do not silently increase the fare" means the
      * customer must see and re-confirm the new number via
-     * {@link #confirmFare} before a driver can be found again.
+     * {@link #confirmFare} before matching runs again.
      */
     @Transactional
     public RideResponse changeDestination(Long customerUserId, Long rideId, RideDestinationChangeRequest request) {
@@ -216,7 +219,13 @@ public class RideService {
                 .map(ride -> toResponse(ride, false));
     }
 
-    /** Phase 4 stand-in for real matching: a driver browses open requests that match their active vehicle's type. */
+    /**
+     * Fallback browse-and-claim, for whenever automatic matching didn't
+     * find (or hasn't yet found) anyone for a ride. Still excludes any
+     * ride this driver already declined or cancelled - the fallback path
+     * must honor the same exclusion rule as proactive matching, or a
+     * driver could simply browse back to a ride they were ruled out of.
+     */
     @Transactional(readOnly = true)
     public Page<RideResponse> listOpenRides(Long driverUserId, Pageable pageable) {
         Driver driver = driverService.getDriverByUserId(driverUserId);
@@ -224,49 +233,77 @@ public class RideService {
                 .orElseThrow(() -> new DriverUnavailableException(
                         "Register an active vehicle before browsing ride requests"));
 
-        return rideRepository
-                .findByStatusAndVehicleTypeOrderByCreatedAtAsc(RideStatus.SEARCHING_DRIVER, activeVehicle.getVehicleType(), pageable)
-                .map(ride -> toResponse(ride, false));
+        Page<Ride> ridesPage = rideRepository
+                .findByStatusAndVehicleTypeOrderByCreatedAtAsc(RideStatus.SEARCHING_DRIVER, activeVehicle.getVehicleType(), pageable);
+
+        List<RideResponse> visible = ridesPage.getContent().stream()
+                .filter(ride -> !matchingService.isExcluded(ride.getId(), driver.getId()))
+                .map(ride -> toResponse(ride, false))
+                .toList();
+        return new PageImpl<>(visible, pageable, ridesPage.getTotalElements());
     }
 
+    /**
+     * Accepts a ride two ways: if matching already proactively assigned
+     * this exact driver ({@code DRIVER_ASSIGNED}), it's a simple
+     * confirmation; otherwise it's the Phase 4 self-claim fallback against
+     * an open {@code SEARCHING_DRIVER} ride (still concurrency-guarded by
+     * {@code @Version} either way).
+     */
     @Transactional
     public RideResponse acceptRide(Long driverUserId, Long rideId) {
         Driver driver = driverService.getDriverByUserId(driverUserId);
-
-        if (driver.getUser().getStatus() != UserStatus.ACTIVE) {
-            throw new UnauthorizedException("Your account has been blocked");
-        }
-        if (driver.getVerificationStatus() != VerificationStatus.VERIFIED) {
-            throw new DriverNotVerifiedException("Your driver profile must be verified before you can accept rides");
-        }
-        if (driver.getOnlineStatus() != DriverOnlineStatus.ONLINE) {
-            throw new DriverUnavailableException("You must be online to accept rides");
-        }
-        if (rideRepository.existsByDriverIdAndStatusIn(driver.getId(), ACTIVE_DRIVER_STATUSES)) {
-            throw new DriverUnavailableException("You already have an active ride");
-        }
-
-        Vehicle activeVehicle = vehicleService.getActiveVehicleEntity(driver.getId())
-                .orElseThrow(() -> new DriverUnavailableException("Register an active vehicle before accepting rides"));
-        if (activeVehicle.getVerificationStatus() != VerificationStatus.VERIFIED) {
-            throw new DriverUnavailableException("Your active vehicle is not verified yet");
-        }
-
         Ride ride = getRideOrThrow(rideId);
-        if (ride.getStatus() != RideStatus.SEARCHING_DRIVER) {
-            throw new InvalidRideStateException("This ride is no longer available");
-        }
-        if (ride.getVehicleType() != activeVehicle.getVehicleType()) {
-            throw new DriverUnavailableException("Your active vehicle does not match this ride's requested vehicle type");
+        Vehicle activeVehicle = validateDriverEligibleToAct(driver, rideId);
+
+        boolean alreadyAssignedToMe = ride.getStatus() == RideStatus.DRIVER_ASSIGNED
+                && ride.getDriver() != null && ride.getDriver().getId().equals(driver.getId());
+
+        if (alreadyAssignedToMe) {
+            transitionTo(ride, RideStatus.DRIVER_ACCEPTED);
+        } else {
+            if (ride.getStatus() != RideStatus.SEARCHING_DRIVER) {
+                throw new InvalidRideStateException("This ride is no longer available");
+            }
+            if (matchingService.isExcluded(rideId, driver.getId())) {
+                throw new DriverUnavailableException("You are no longer eligible for this ride");
+            }
+            if (ride.getVehicleType() != activeVehicle.getVehicleType()) {
+                throw new DriverUnavailableException("Your active vehicle does not match this ride's requested vehicle type");
+            }
+            ride.setDriver(driver);
+            transitionTo(ride, RideStatus.DRIVER_ASSIGNED);
+            transitionTo(ride, RideStatus.DRIVER_ACCEPTED);
         }
 
-        ride.setDriver(driver);
-        transitionTo(ride, RideStatus.DRIVER_ASSIGNED);
-        transitionTo(ride, RideStatus.DRIVER_ACCEPTED);
         ride.setAcceptedAt(Instant.now());
+        reliabilityService.recordAcceptance(driver);
 
         // Optimistic-lock check happens on flush: if another driver's accept() committed first,
         // this save fails with ObjectOptimisticLockingFailureException -> 409 CONCURRENT_MODIFICATION.
+        return toResponse(rideRepository.save(ride), false);
+    }
+
+    /**
+     * Explicitly turns down a ride matching proactively assigned. Excludes
+     * this driver from ever being offered this exact ride again and
+     * immediately tries to reassign it to the next-best eligible driver.
+     */
+    @Transactional
+    public RideResponse declineRide(Long driverUserId, Long rideId) {
+        Ride ride = getOwnedByDriver(driverUserId, rideId);
+        if (ride.getStatus() != RideStatus.DRIVER_ASSIGNED) {
+            throw new InvalidRideStateException("This ride is not currently awaiting your decision");
+        }
+
+        Driver decliningDriver = ride.getDriver();
+        matchingService.recordExclusion(ride, decliningDriver, ExclusionReason.DECLINED);
+        reliabilityService.recordDecline(decliningDriver);
+
+        ride.setDriver(null);
+        transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+        attemptAutoAssign(ride);
+
         return toResponse(rideRepository.save(ride), false);
     }
 
@@ -297,6 +334,7 @@ public class RideService {
         Ride ride = getOwnedByDriver(driverUserId, rideId);
         transitionTo(ride, RideStatus.RIDE_COMPLETED);
         ride.setCompletedAt(Instant.now());
+        reliabilityService.recordCompletion(ride.getDriver());
         // Auto-advance: the system now expects payment. The Payment domain itself lands in
         // Phase 12; this transition is a pure state-machine concern and doesn't depend on it.
         transitionTo(ride, RideStatus.PAYMENT_PENDING);
@@ -310,20 +348,57 @@ public class RideService {
         boolean isAssignedDriver = ride.getDriver() != null
                 && ride.getDriver().getUser().getId().equals(principal.userId());
 
-        RideStatus target;
         if (isCustomer) {
-            target = RideStatus.CANCELLED;
+            transitionTo(ride, RideStatus.CANCELLED);
+            ride.setCancelledAt(Instant.now());
         } else if (isAssignedDriver) {
-            target = RideStatus.DRIVER_CANCELLED;
-            // Reliability-score impact and automatic reassignment onto the next-best driver
-            // are Phase 6 concerns (driver matching); this phase only records the cancellation.
+            Driver cancellingDriver = ride.getDriver();
+            matchingService.recordExclusion(ride, cancellingDriver, ExclusionReason.CANCELLED);
+            reliabilityService.recordCancellation(cancellingDriver);
+
+            transitionTo(ride, RideStatus.DRIVER_CANCELLED);
+            ride.setCancelledAt(Instant.now());
+
+            // Automatic reassignment: don't make the customer start over - continue the same request.
+            ride.setDriver(null);
+            transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+            attemptAutoAssign(ride);
         } else {
             throw new UnauthorizedException("This ride does not belong to you");
         }
 
-        transitionTo(ride, target);
-        ride.setCancelledAt(Instant.now());
         return toResponse(rideRepository.save(ride), isCustomer);
+    }
+
+    /** Tries to proactively assign the best eligible driver; leaves the ride at SEARCHING_DRIVER (fallback: {@link #listOpenRides}) if nobody qualifies. */
+    private void attemptAutoAssign(Ride ride) {
+        matchingService.findBestDriver(ride).ifPresent(driver -> {
+            ride.setDriver(driver);
+            transitionTo(ride, RideStatus.DRIVER_ASSIGNED);
+        });
+    }
+
+    /** Shared driver-side eligibility checks for accepting/being assigned a ride, excluding {@code rideId} from the "already busy" check. */
+    private Vehicle validateDriverEligibleToAct(Driver driver, Long rideId) {
+        if (driver.getUser().getStatus() != UserStatus.ACTIVE) {
+            throw new UnauthorizedException("Your account has been blocked");
+        }
+        if (driver.getVerificationStatus() != VerificationStatus.VERIFIED) {
+            throw new DriverNotVerifiedException("Your driver profile must be verified before you can accept rides");
+        }
+        if (driver.getOnlineStatus() != DriverOnlineStatus.ONLINE) {
+            throw new DriverUnavailableException("You must be online to accept rides");
+        }
+        if (rideRepository.existsByDriverIdAndStatusInAndIdNot(driver.getId(), ActiveRideStatuses.DRIVER, rideId)) {
+            throw new DriverUnavailableException("You already have an active ride");
+        }
+
+        Vehicle activeVehicle = vehicleService.getActiveVehicleEntity(driver.getId())
+                .orElseThrow(() -> new DriverUnavailableException("Register an active vehicle before accepting rides"));
+        if (activeVehicle.getVerificationStatus() != VerificationStatus.VERIFIED) {
+            throw new DriverUnavailableException("Your active vehicle is not verified yet");
+        }
+        return activeVehicle;
     }
 
     private Ride getOwnedByDriver(Long driverUserId, Long rideId) {
@@ -367,7 +442,7 @@ public class RideService {
         if (ride.getDriver() != null) {
             Driver driver = ride.getDriver();
             // Shows the driver's *current* active vehicle. A real system would snapshot which
-            // vehicle was used at accept time; that field isn't in the Phase 4 Ride schema.
+            // vehicle was used at accept time; that field isn't in the Ride schema.
             Optional<Vehicle> vehicle = vehicleService.getActiveVehicleEntity(driver.getId());
             driverInfo = new RideDriverInfo(
                     driver.getId(),

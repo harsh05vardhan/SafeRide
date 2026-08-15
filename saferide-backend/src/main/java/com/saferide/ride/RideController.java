@@ -63,7 +63,7 @@ public class RideController {
         return ApiResponse.ok(rideService.listForCustomer(principal.userId(), pageable));
     }
 
-    /** Phase 4's naive open-request browser for drivers - superseded by proactive assignment in Phase 6. */
+    /** Fallback browse-and-claim for whenever automatic matching hasn't (yet) found a driver for a ride. */
     @GetMapping("/open")
     @PreAuthorize("hasRole('DRIVER')")
     public ApiResponse<Page<RideResponse>> openRides(
@@ -112,6 +112,13 @@ public class RideController {
     @PreAuthorize("hasRole('DRIVER')")
     public ApiResponse<RideResponse> accept(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
         return ApiResponse.ok("Ride accepted", rideService.acceptRide(principal.userId(), id));
+    }
+
+    /** Turns down a ride matching proactively assigned - excludes this driver from it and triggers immediate reassignment. */
+    @PostMapping("/{id}/decline")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ApiResponse<RideResponse> decline(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok("Ride declined", rideService.declineRide(principal.userId(), id));
     }
 
     @PostMapping("/{id}/arrive")

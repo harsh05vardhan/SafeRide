@@ -2,6 +2,7 @@ package com.saferide.config;
 
 import com.saferide.common.VerificationStatus;
 import com.saferide.driver.Driver;
+import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.driver.DriverService;
 import com.saferide.user.RoleName;
@@ -76,6 +77,11 @@ public class DevDataSeeder {
         // can be used end-to-end (going online, matching, rides, ...) without
         // extra setup - a real signup goes through POST /api/admin/drivers/{id}/approve.
         driver.setVerificationStatus(VerificationStatus.VERIFIED);
+        // Guwahati Railway Station - one of the suggested pickup points on the home page (Phase 7) -
+        // so this account is immediately a matching candidate for a demo ride without extra setup.
+        driver.setCurrentLatitude(26.1845);
+        driver.setCurrentLongitude(91.7362);
+        driver.setOnlineStatus(DriverOnlineStatus.ONLINE);
         driverRepository.save(driver);
 
         Vehicle vehicle = new Vehicle();
@@ -89,7 +95,7 @@ public class DevDataSeeder {
         vehicle.setActive(true);
         vehicleRepository.save(vehicle);
 
-        log.info("[dev-seed] driver@example.com created (pre-verified, with a verified active vehicle)");
+        log.info("[dev-seed] driver@example.com created (pre-verified, ONLINE, with a verified active vehicle and a reported location)");
     }
 
     private void seedAdmin() {

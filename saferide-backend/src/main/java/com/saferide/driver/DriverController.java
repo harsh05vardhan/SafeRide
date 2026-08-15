@@ -4,6 +4,7 @@ import com.saferide.auth.AuthenticatedUser;
 import com.saferide.common.ApiResponse;
 import com.saferide.driver.dto.DriverDocumentResponse;
 import com.saferide.driver.dto.DriverDocumentUploadRequest;
+import com.saferide.driver.dto.DriverLocationUpdateRequest;
 import com.saferide.driver.dto.DriverProfileResponse;
 import com.saferide.driver.dto.DriverRegisterRequest;
 import com.saferide.driver.dto.DriverStatusUpdateRequest;
@@ -28,10 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Driver self-service endpoints. {@code PUT /api/drivers/location} arrives
- * once Redis is wired up in Phase 11.
- */
+/** Driver self-service endpoints. */
 @Tag(name = "Drivers")
 @RestController
 @RequestMapping("/api/drivers")
@@ -72,6 +70,15 @@ public class DriverController {
             @Valid @RequestBody DriverStatusUpdateRequest request) {
         var profile = driverService.updateOnlineStatus(principal.userId(), request.onlineStatus());
         return ApiResponse.ok("Status updated", profile);
+    }
+
+    @PutMapping("/location")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ApiResponse<DriverProfileResponse> updateLocation(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody DriverLocationUpdateRequest request) {
+        var profile = driverService.updateLocation(principal.userId(), request.latitude(), request.longitude());
+        return ApiResponse.ok("Location updated", profile);
     }
 
     @PostMapping("/documents")
