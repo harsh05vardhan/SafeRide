@@ -1,4 +1,5 @@
 import type { UserSummary } from "./auth";
+export type { PageResponse } from "./common";
 
 export type VehicleType = "MINI" | "SEDAN" | "SUV";
 
@@ -76,20 +77,18 @@ export interface RideDestinationChangeRequest {
   destinationLongitude: number;
 }
 
-export interface PageResponse<T> {
-  content: T[];
-  page: {
-    size: number;
-    number: number;
-    totalElements: number;
-    totalPages: number;
-  };
-}
-
 /** Non-terminal ride statuses still being actively tracked on the live ride screen. */
 export const ACTIVE_TRACKING_STATUSES: RideStatus[] = [
   "REQUESTED",
   "SEARCHING_DRIVER",
+  "DRIVER_ASSIGNED",
+  "DRIVER_ACCEPTED",
+  "DRIVER_ARRIVED",
+  "RIDE_STARTED",
+];
+
+/** Mirrors the backend's ActiveRideStatuses.DRIVER - a driver with a ride in one of these is "busy" / has a current ride. */
+export const ACTIVE_DRIVER_RIDE_STATUSES: RideStatus[] = [
   "DRIVER_ASSIGNED",
   "DRIVER_ACCEPTED",
   "DRIVER_ARRIVED",

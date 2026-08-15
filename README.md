@@ -6,8 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 7 of 18 complete (customer frontend — login through live
-> ride tracking). See [Roadmap](#roadmap) below for what's implemented vs.
+> **Status:** Phase 8 of 18 complete (driver frontend — dashboard through
+> earnings). See [Roadmap](#roadmap) below for what's implemented vs.
 > planned.
 
 ## Table of contents
@@ -17,6 +17,8 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Tech stack](#tech-stack)
 - [Folder structure](#folder-structure)
 - [Database design](#database-design)
+- [Customer frontend](#customer-frontend)
+- [Driver frontend](#driver-frontend)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -158,19 +160,28 @@ safeRide/
 │       ├── assets/
 │       ├── components/
 │       │   ├── common/       Button, Input, Card, Badge, Spinner, Skeleton,
-│       │   │                 ConfirmDialog, StateViews, ProtectedRoute
-│       │   ├── layout/       Navbar, MobileBottomNav, CustomerLayout
+│       │   │                 ConfirmDialog, StateViews, ProtectedRoute (role-gated)
+│       │   ├── layout/       Navbar/MobileBottomNav/CustomerLayout,
+│       │   │                 DriverNavbar/DriverMobileBottomNav/DriverLayout (Phase 8)
 │       │   ├── map/          MapView, Pickup/Destination/DriverMarker, RouteLine
 │       │   ├── ride/         LocationPicker
-│       │   ├── driver/       (Phase 8) admin/ (Phase 9) safety/ (Phase 12)
+│       │   ├── driver/       (Phase 8) StatCard, IncomingRequestCard
+│       │   └── admin/ (Phase 9) safety/ (Phase 12)
 │       ├── pages/
-│       │   ├── auth/         LoginPage, RegisterPage
-│       │   └── customer/     HomePage, RideOptionsPage, FareBreakdownPage,
-│       │                     FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage
+│       │   ├── auth/         LoginPage, RegisterPage (role picker built in)
+│       │   ├── RoleLandingPage.tsx  "/" - routes single-role accounts straight
+│       │   │                 through, shows a chooser for dual-role accounts
+│       │   ├── customer/     HomePage, RideOptionsPage, FareBreakdownPage,
+│       │   │                 FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage
+│       │   └── driver/       (Phase 8) DriverDashboardPage, DriverRidesPage,
+│       │                     DriverRideDetailPage, DriverEarningsPage, DriverProfilePage
 │       ├── services/         api.ts (Axios + JWT/refresh interceptors), authService,
-│       │                     rideService, fareService, customerService
-│       ├── contexts/         AuthContext, BookingContext, ToastContext
-│       ├── types/            auth.ts, ride.ts, fare.ts - mirror the backend DTOs exactly
+│       │                     rideService (customer + driver actions), fareService,
+│       │                     customerService, driverService, vehicleService (Phase 8)
+│       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8)
+│       ├── contexts/         AuthContext (isCustomer/isDriver), BookingContext, ToastContext
+│       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts -
+│       │                     mirror the backend DTOs exactly
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
@@ -417,6 +428,75 @@ A few design decisions worth calling out:
   the login screen. Splitting brought the main bundle from ~700KB to
   ~395KB gzip-measured at build time.
 
+## Driver frontend
+
+The full driver journey against the real backend - going online, a
+proactively-assigned request, pickup through drop-off, and the earnings
+those completed rides produced:
+
+**Login/Register (role picker) → Role Landing → Dashboard (online toggle,
+incoming request) → Ride Detail (accept → arrive → OTP → start → complete)
+→ Earnings / Profile (vehicles, documents).**
+
+A few design decisions worth calling out:
+
+- **Login and registration are shared with the customer flow, not
+  duplicated.** [`RegisterPage`](saferide-frontend/src/pages/auth/RegisterPage.tsx)'s
+  role picker (`CUSTOMER`/`DRIVER`) already collects the driving license
+  number when `DRIVER` is selected, and `LoginPage` doesn't need to know a
+  caller's role at all - the account itself carries it. A dedicated
+  `/driver/login` would be the same form with different chrome.
+- **"/" resolves role, it doesn't assume one.** [`RoleLandingPage`](saferide-frontend/src/pages/RoleLandingPage.tsx)
+  reads `isCustomer`/`isDriver` off the authenticated account and redirects
+  straight through for the common single-role case; an account holding
+  *both* roles (the backend explicitly supports a customer later adding
+  the DRIVER role - see `POST /api/drivers/register`) sees a two-card
+  chooser instead of the SPA silently guessing which experience they meant
+  to open. [`ProtectedRoute`](saferide-frontend/src/components/common/ProtectedRoute.tsx)
+  takes a `requiredRole` prop for the same reason: it's the same gate
+  customer and driver routes share, not two copies of similar logic.
+- **There's no dedicated "current assignment" endpoint, so the frontend
+  doesn't invent one.** [`useCurrentDriverRide`](saferide-frontend/src/hooks/useCurrentDriverRide.ts)
+  derives "my active ride" by scanning the driver's own paginated ride
+  history (`GET /api/drivers/rides`) for anything in a busy status
+  (`ACTIVE_DRIVER_RIDE_STATUSES`, mirroring the backend's
+  `ActiveRideStatuses.DRIVER`) - the dashboard, the requests page, and the
+  ride-detail page all share this one hook so "what is my current ride"
+  never has two different answers.
+- **Going online reports a location immediately, not eventually.** Toggling
+  online in [`DriverDashboardPage`](saferide-frontend/src/pages/driver/DriverDashboardPage.tsx)
+  calls the browser's `navigator.geolocation.getCurrentPosition` and pushes
+  it via `PUT /api/drivers/location` right away, matching
+  [Matching](#matching-reliability-and-automatic-reassignment)'s
+  requirement that a driver needs a reported location to be a candidate at
+  all - a driver who just tapped "online" doesn't have to wait for a
+  polling cycle to become matchable.
+- **The proactive assignment and the fallback list are visually distinct,
+  on purpose.** [`IncomingRequestCard`](saferide-frontend/src/components/driver/IncomingRequestCard.tsx)
+  (a `DRIVER_ASSIGNED` ride the matching engine picked *for* this driver)
+  only ever renders one at a time and requires an explicit Accept/Reject;
+  [`DriverRidesPage`](saferide-frontend/src/pages/driver/DriverRidesPage.tsx)'s
+  browse list (`GET /api/rides/open`) is the Phase 4 fallback and is only
+  ever shown once there's no active assignment - a driver is never asked
+  to choose between the two.
+- **The OTP entry only appears where the state machine allows it.** The
+  ride-detail page's Accept → Mark Arrived → OTP → Start → Complete flow
+  ([`DriverRideDetailPage`](saferide-frontend/src/pages/driver/DriverRideDetailPage.tsx))
+  renders one action per ride status, never a form for a transition the
+  backend would reject - `RideStateMachine` stays the single source of
+  truth for what's legal next, the UI just reflects it.
+- **Earnings are read from the locked fare, never recomputed.** [`DriverEarningsPage`](saferide-frontend/src/pages/driver/DriverEarningsPage.tsx)
+  aggregates `GET /api/rides/{id}/fare` across the driver's completed rides
+  for the chart (Recharts) and trip list - the same [Fare Lock](#fare-lock--how-the-guarantee-actually-holds)
+  amount the customer confirmed, not a client-side distance×rate guess
+  that could silently drift from what was actually charged.
+- **Documents are URL-based, honestly.** The backend has no file-upload
+  endpoint yet (`documentUrl` is just a validated string column) -
+  [`DriverProfilePage`](saferide-frontend/src/pages/driver/DriverProfilePage.tsx)'s
+  document form says so directly ("paste a hosted URL... direct uploads
+  arrive in a later phase") instead of faking a file picker that has
+  nowhere real to send the bytes.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -598,7 +678,7 @@ the backend's Testcontainers work. Until then, every frontend phase is
 verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
 type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
 production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 7 - plus a manual pass of the real flow against
+both clean as of Phase 8 - plus a manual pass of the real flow against
 the backend described above.
 
 ## CI/CD
@@ -626,8 +706,8 @@ events are in place.
 | 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ✅ Done |
 | 6 | Driver matching, reliability score, automatic reassignment | ✅ Done |
 | 7 | Customer frontend (login → tracking) | ✅ Done |
-| 8 | Driver frontend (dashboard → earnings) | ⏳ Next |
-| 9 | Admin frontend | Planned |
+| 8 | Driver frontend (dashboard → earnings) | ✅ Done |
+| 9 | Admin frontend | ⏳ Next |
 | 10 | WebSocket/STOMP — real-time status & location | Planned |
 | 11 | Redis — driver locations, matching, caching | Planned |
 | 12 | Payment, rating, complaints, safety | Planned |
