@@ -1,0 +1,17 @@
+# Production profile. Every value is sourced from the environment - nothing
+# sensitive is defaulted here. ddl-auto is deliberately "validate": schema
+# changes in production flow through migrations, never Hibernate auto-DDL.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+server:
+  error:
+    include-message: never
+
+logging:
+  level:
+    root: WARN
+    com.saferide: INFO

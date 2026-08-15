@@ -1,0 +1,18 @@
+# Used for fast Spring context / unit tests only (activated by @ActiveProfiles("test")).
+# Real MySQL/Redis integration paths are exercised via Testcontainers starting Phase 14 -
+# this profile intentionally trades fidelity for speed in pure unit-level tests.
+spring:
+  datasource:
+    url: jdbc:h2:mem:saferide_test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+logging:
+  level:
+    root: WARN
+    com.saferide: INFO

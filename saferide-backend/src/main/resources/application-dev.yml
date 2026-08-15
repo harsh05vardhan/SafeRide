@@ -1,0 +1,16 @@
+# Local development profile. Assumes MySQL is reachable at localhost:3306
+# (see docker-compose.dev.yml at the repo root) with schema auto-managed by
+# Hibernate for fast iteration. Production disables ddl-auto entirely and
+# relies on migrations (introduced alongside the first real entities in
+# Phase 4).
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+logging:
+  level:
+    root: INFO
+    com.saferide: DEBUG
+    org.hibernate.SQL: DEBUG

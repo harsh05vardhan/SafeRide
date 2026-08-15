@@ -1,0 +1,46 @@
+## ============ Java / Maven / Spring Boot ============
+saferide-backend/target/
+saferide-backend/.mvn/wrapper/maven-wrapper.jar
+saferide-backend/*.iml
+*.class
+*.log
+HELP.md
+
+## ============ Node / React / Vite ============
+saferide-frontend/node_modules/
+saferide-frontend/dist/
+saferide-frontend/dist-ssr/
+saferide-frontend/*.local
+saferide-frontend/.vite/
+saferide-frontend/*.tsbuildinfo
+saferide-frontend/vite.config.js
+saferide-frontend/vite.config.d.ts
+
+## ============ Env files (never commit real secrets) ============
+.env
+.env.local
+.env.*.local
+saferide-backend/.env
+saferide-frontend/.env
+saferide-frontend/.env.local
+
+## ============ IDE / tooling ============
+.idea/
+.vscode/
+.claude/settings.local.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+## ============ Docker ============
+docker/volumes/
+**/mysql-data/
+**/redis-data/
+
+## ============ Misc ============
+*.tmp
+*.bak
+coverage/

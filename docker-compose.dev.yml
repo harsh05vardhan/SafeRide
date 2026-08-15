@@ -1,0 +1,46 @@
+# Local development infrastructure ONLY - MySQL + Redis, so the backend can
+# run natively (mvn spring-boot:run) against real services instead of mocks.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# The full containerized stack (backend + frontend images, health checks,
+# single `docker compose up --build` for everything) arrives in Phase 15 as
+# docker-compose.yml. Redis is included here ahead of its Phase 11 usage
+# purely as dev infra convenience - the backend does not talk to it yet.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: saferide-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-saferide}
+      MYSQL_USER: ${DB_USERNAME:-saferide}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-saferide}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-saferide_root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - saferide-mysql-dev-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-saferide_root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: saferide-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - saferide-redis-dev-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  saferide-mysql-dev-data:
+  saferide-redis-dev-data:

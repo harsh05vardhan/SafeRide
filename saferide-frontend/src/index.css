@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 45 100% 51%; /* #FFC107 */
+    --dark: 222 47% 11%; /* #0F172A */
+    --background: 210 40% 98%; /* #F8FAFC */
+    --foreground: 215 25% 27%; /* #1E293B */
+    --muted: 215 16% 47%; /* #64748B */
+    --success: 142 71% 45%; /* #22C55E */
+    --danger: 0 84% 60%; /* #EF4444 */
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+}
