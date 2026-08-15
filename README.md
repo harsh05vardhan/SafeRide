@@ -6,8 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 3 of 18 complete (vehicles, driver verification, driver
-> status). See [Roadmap](#roadmap) below for what's implemented vs. planned.
+> **Status:** Phase 4 of 18 complete (ride booking, ride state machine,
+> ride APIs). See [Roadmap](#roadmap) below for what's implemented vs. planned.
 
 ## Table of contents
 
@@ -130,7 +130,8 @@ safeRide/
 │       ├── user/            User, Role, CustomerController, profile self-service
 │       ├── driver/          Driver profile, status toggle, documents, self-registration
 │       ├── vehicle/         Vehicle entity, driver self-service registration/activation
-│       ├── ride/            (Phase 4)
+│       ├── ride/            Ride entity/state machine, booking, accept/arrive/start/complete/cancel
+│       ├── map/             MapService abstraction - MockMapService today, Google/Mapbox later
 │       ├── fare/            (Phase 5)
 │       ├── matching/        (Phase 6)
 │       ├── payment/         (Phase 12)
@@ -178,10 +179,11 @@ Every package/folder above already exists in the repo (most with a
 Full entity list, columns and constraints are specified in the project brief
 this README accompanies; they land in the codebase starting Phase 2 (`USER`,
 `ROLE`), Phase 3 (`VEHICLE`, `DRIVER_DOCUMENT`, `AUDIT_LOG`) and Phase 4
-(`RIDE`, `FARE`, `FARE_LOCK`, ...). Summary of the core relationships:
+(`RIDE`). `FARE`/`FARE_LOCK` land in Phase 5. Summary of the core
+relationships:
 
-- One `USER` has at most one `DRIVER` profile (1:0..1) and can place many
-  `RIDE`s as a customer.
+- One `USER` has at most one `DRIVER` profile (1:0..1), can place many
+  `RIDE`s as a customer, and can have many `RIDE`s as a driver.
 - One `DRIVER` has **one or more** `VEHICLE`s (added in Phase 3 as a proper
   1:N - a driver can register more than one and switch which is `active`,
   but only the active one is ever visible to matching) and, eventually, one
@@ -190,14 +192,21 @@ this README accompanies; they land in the codebase starting Phase 2 (`USER`,
   used by `DRIVER`, `VEHICLE` and `DRIVER_DOCUMENT` alike - an admin reviews
   the person, each vehicle, and each document as independent decisions, not
   one combined flag.
-- One `RIDE` has exactly one `FARE`, at most one `FARE_LOCK`, at most one
-  `PAYMENT`, at most one `RATING`, and zero or more `COMPLAINT`s.
+- One `RIDE` has exactly one `FARE` (Phase 5), at most one `FARE_LOCK`
+  (Phase 5), at most one `PAYMENT`, at most one `RATING`, and zero or more
+  `COMPLAINT`s.
+- `RIDE.status` moves through the full lifecycle
+  (`REQUESTED → SEARCHING_DRIVER → DRIVER_ASSIGNED → DRIVER_ACCEPTED →
+  DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED → PAYMENT_PENDING → ...`)
+  under `RideStateMachine`'s validation - no controller or service sets
+  `status` directly.
 - `RIDE_LOCATION` (high-frequency GPS points) is **not** written to MySQL —
   live location lives in Redis; MySQL only ever sees the ride's key
   lifecycle timestamps (`createdAt`, `acceptedAt`, `startedAt`,
   `completedAt`, `cancelledAt`).
 - `RIDE.version` is an `@Version` optimistic-lock column — it's what stops
-  two drivers from accepting the same ride under concurrent requests.
+  two drivers from accepting the same ride under concurrent requests (see
+  [Concurrency](#concurrency--optimistic-locking) below).
 - `AUDIT_LOG` deliberately holds plain `userId`/`rideId` longs rather than
   foreign-key relations, so the trail keeps meaning what it said at the time
   even if the referenced row later changes.
@@ -209,6 +218,18 @@ as a plain column constraint) and indexes (e.g. `ride.status`,
 `driver.verification_status`, `vehicle.verification_status`) are added
 alongside the entities that need them so each migration is reviewable
 against real query patterns instead of being guessed upfront.
+
+### Concurrency / optimistic locking
+
+`RIDE.version` backs a JPA `@Version` column. When two drivers call
+`POST /api/rides/{id}/accept` on the same ride at nearly the same instant,
+both read the row at the same version; whichever transaction commits first
+wins and increments it, and the second one's `UPDATE ... WHERE version = N`
+matches zero rows, so Hibernate throws
+`ObjectOptimisticLockingFailureException` - translated by
+`GlobalExceptionHandler` into a normal `409 CONCURRENT_MODIFICATION`
+response, not a 500. No `Thread.sleep`, no manual locking - see
+`RideService.acceptRide` and the accompanying handler.
 
 ## API contract
 
@@ -227,7 +248,7 @@ Every response uses one of two envelopes:
 }
 ```
 
-Endpoint groups not listed below (`/api/rides`, `/api/fare`, `/api/payments`,
+Endpoint groups not listed below (`/api/fare`, `/api/payments`,
 `/api/ratings`, `/api/complaints`, `/api/admin/{users,rides,payments,
 complaints,reports}`, ...) are introduced with the phase that implements
 them and documented live via Swagger UI once the app is running:
@@ -235,7 +256,7 @@ them and documented live via Swagger UI once the app is running:
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-### Live endpoints (Phase 1–3)
+### Live endpoints (Phase 1–4)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -249,6 +270,7 @@ them and documented live via Swagger UI once the app is running:
 | GET | `/api/drivers/profile` | `DRIVER` | |
 | PUT | `/api/drivers/status` | `DRIVER` | `{onlineStatus: ONLINE\|OFFLINE}`; going `ONLINE` requires an admin-verified driver |
 | POST / GET | `/api/drivers/documents` | `DRIVER` | Submit/list documents for review (`documentUrl` references external storage - no upload endpoint yet) |
+| GET | `/api/drivers/rides` | `DRIVER` | Own ride history, paginated |
 | POST / GET | `/api/vehicles` | `DRIVER` | Register a vehicle (auto-becomes the active one) / list own vehicles |
 | PUT | `/api/vehicles/{id}/activate` | `DRIVER` | Switch which owned vehicle is active |
 | GET | `/api/admin/drivers` | `ADMIN` | `?status=PENDING\|VERIFIED\|REJECTED&page=&size=` |
@@ -256,6 +278,16 @@ them and documented live via Swagger UI once the app is running:
 | PUT | `/api/admin/drivers/{id}/approve` \| `/block` \| `/unblock` | `ADMIN` | `/block` also forces the driver offline |
 | PUT | `/api/admin/drivers/vehicles/{id}/approve` \| `/reject` | `ADMIN` | |
 | PUT | `/api/admin/drivers/documents/{id}/approve` \| `/reject` | `ADMIN` | |
+| POST | `/api/rides/estimate` | `CUSTOMER` | Distance/ETA preview via `MapService` - no ride created |
+| POST | `/api/rides` | `CUSTOMER` | Creates a ride (`REQUESTED` → `SEARCHING_DRIVER`); rejects a second active ride per customer (409 `ACTIVE_RIDE_EXISTS`) |
+| GET | `/api/rides` | `CUSTOMER` | Own ride history, paginated |
+| GET | `/api/rides/open` | `DRIVER` | Phase 4's naive "browse open requests" (filtered by the driver's active vehicle type) - superseded by proactive assignment in Phase 6 |
+| GET | `/api/rides/{id}` | Customer, assigned driver, or `ADMIN` | `otp` is only included for the ride's own customer |
+| POST | `/api/rides/{id}/accept` | `DRIVER` | Self-claim (Phase 4); requires `ONLINE` + verified driver + verified, type-matching active vehicle; `409 CONCURRENT_MODIFICATION` if another driver won the race |
+| POST | `/api/rides/{id}/arrive` | `DRIVER` (assigned) | Generates the 4-digit OTP |
+| POST | `/api/rides/{id}/start` | `DRIVER` (assigned) | `{otp}`; wrong code → `400 INVALID_OTP` |
+| POST | `/api/rides/{id}/complete` | `DRIVER` (assigned) | Auto-advances straight to `PAYMENT_PENDING` |
+| POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED`; driver → `DRIVER_CANCELLED`; blocked once `RIDE_STARTED` |
 
 Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
 JWTs carrying `sub` (user id), `email` and `roles` claims - no DB hit per
@@ -351,9 +383,11 @@ none of them require Docker/MySQL to be running:
 - [`AuthIntegrationTest`](saferide-backend/src/test/java/com/saferide/auth/AuthIntegrationTest.java) — full HTTP-shaped flow: register → login → call a protected endpoint → cross-role 403 → refresh rotation → logout revocation → validation errors, all through real MockMvc requests (no `@WithMockUser` shortcuts).
 - [`VehicleServiceTest`](saferide-backend/src/test/java/com/saferide/vehicle/VehicleServiceTest.java) — registering a new vehicle correctly deactivates whichever one was previously active (Mockito).
 - [`DriverVerificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/DriverVerificationIntegrationTest.java) — the full Phase 3 pipeline through real HTTP requests: driver signs up → blocked from going online while PENDING → admin lists/approves them → driver can go online → vehicle and document verified/rejected independently → admin blocks the account (login then fails) → admin unblocks (login works again) → ownership checks (can't activate another driver's vehicle) and duplicate-vehicle-number rejection.
+- [`RideStateMachineTest`](saferide-backend/src/test/java/com/saferide/ride/RideStateMachineTest.java) — every legal transition in the spec's flowchart is allowed, every illegal one (skipping a state, going backwards, cancelling a ride already in progress, acting on a terminal state) is rejected; every non-terminal status has at least one outgoing edge (32 cases via `@ParameterizedTest`).
+- [`RideIntegrationTest`](saferide-backend/src/test/java/com/saferide/ride/RideIntegrationTest.java) — full HTTP-shaped ride lifecycle: estimate → book → a driver with the wrong vehicle type never sees it in `/api/rides/open` → the right driver accepts → a second driver is too late (`409 INVALID_RIDE_STATE`) → arriving generates an OTP visible only to the customer → wrong OTP rejected → correct OTP starts the ride → completing auto-advances to `PAYMENT_PENDING` → a ride that far along can no longer be cancelled → a stranger can't view or touch the ride → a customer can't book a second active ride → customer-cancel vs. driver-cancel produce `CANCELLED` vs. `DRIVER_CANCELLED` respectively.
 
 Domain-level tests (fare calculation, fare locking, matching, reliability
-scoring, OTP, concurrency) are added alongside each phase that introduces
+scoring, concurrency stress) are added alongside each phase that introduces
 the behavior; Testcontainers (real MySQL in tests) arrives in Phase 14.
 
 ## CI/CD
@@ -377,8 +411,8 @@ events are in place.
 | 1 | Project setup — Spring Boot, React, MySQL, Git, basic structure | ✅ Done |
 | 2 | User/Customer/Driver/Admin, JWT auth, Spring Security | ✅ Done |
 | 3 | Vehicle, driver verification, driver status | ✅ Done |
-| 4 | Ride booking, ride state machine, ride APIs | ⏳ Next |
-| 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | Planned |
+| 4 | Ride booking, ride state machine, ride APIs | ✅ Done |
+| 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ⏳ Next |
 | 6 | Driver matching, reliability score, automatic reassignment | Planned |
 | 7 | Customer frontend (login → tracking) | Planned |
 | 8 | Driver frontend (dashboard → earnings) | Planned |

@@ -7,10 +7,15 @@ import com.saferide.driver.dto.DriverDocumentUploadRequest;
 import com.saferide.driver.dto.DriverProfileResponse;
 import com.saferide.driver.dto.DriverRegisterRequest;
 import com.saferide.driver.dto.DriverStatusUpdateRequest;
+import com.saferide.ride.RideService;
+import com.saferide.ride.dto.RideResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,13 +24,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Driver self-service endpoints. {@code PUT /api/drivers/location} and
- * {@code GET /api/drivers/rides} arrive later (location once Redis is
- * wired up in Phase 11, rides alongside the ride domain in Phase 4/6).
+ * Driver self-service endpoints. {@code PUT /api/drivers/location} arrives
+ * once Redis is wired up in Phase 11.
  */
 @Tag(name = "Drivers")
 @RestController
@@ -35,6 +40,7 @@ public class DriverController {
 
     private final DriverService driverService;
     private final DriverDocumentService documentService;
+    private final RideService rideService;
 
     /**
      * Note: since access tokens are stateless JWTs, a token issued before
@@ -81,5 +87,15 @@ public class DriverController {
     @PreAuthorize("hasRole('DRIVER')")
     public ApiResponse<List<DriverDocumentResponse>> listDocuments(@AuthenticationPrincipal AuthenticatedUser principal) {
         return ApiResponse.ok(documentService.listForDriver(principal.userId()));
+    }
+
+    @GetMapping("/rides")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ApiResponse<Page<RideResponse>> myRides(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        return ApiResponse.ok(rideService.listForDriver(principal.userId(), pageable));
     }
 }

@@ -9,6 +9,7 @@ import com.saferide.exception.UnauthorizedException;
 import com.saferide.vehicle.dto.VehicleRegisterRequest;
 import com.saferide.vehicle.dto.VehicleResponse;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,6 +89,17 @@ public class VehicleService {
     @Transactional(readOnly = true)
     public List<VehicleResponse> listForDriverId(Long driverId) {
         return vehicleRepository.findByDriverIdOrderByCreatedAtDesc(driverId).stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Cross-domain entry point for ride booking/matching: the entity (not
+     * a DTO) is returned deliberately so callers can check both
+     * {@code vehicleType} and {@code verificationStatus} without a second
+     * round trip.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Vehicle> getActiveVehicleEntity(Long driverId) {
+        return vehicleRepository.findByDriverIdAndActiveTrue(driverId);
     }
 
     private Vehicle getOwnedVehicle(Long driverId, Long vehicleId) {

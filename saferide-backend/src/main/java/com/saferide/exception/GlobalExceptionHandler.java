@@ -6,6 +6,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,6 +52,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiErrorResponse.of("You do not have permission to access this resource", "ACCESS_DENIED"));
+    }
+
+    /**
+     * The concrete manifestation of "two drivers accept the same ride at
+     * the same time": both read the row at {@code version = N}, both try
+     * to write, and whichever transaction commits second gets this from
+     * Hibernate. Treated as a normal, expected, retryable conflict - not
+     * a server error - so the losing driver's client just knows to refresh.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiErrorResponse> handleConcurrentModification(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Optimistic locking conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        "This was just updated by someone else - please refresh and try again",
+                        "CONCURRENT_MODIFICATION"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
