@@ -38,6 +38,13 @@ server:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  jwt:
+    # Dev-only fallback secret below is >= 256 bits, which HS256 requires - it is
+    # NOT safe for anything beyond local development. Every real environment
+    # MUST set JWT_SECRET explicitly (see .env.example / application-prod.yml).
+    secret: ${JWT_SECRET:dev-only-secret-change-me-dev-only-secret-change-me}
+    access-expiration-ms: ${JWT_EXPIRATION:900000}
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:604800000}
 
 springdoc:
   swagger-ui:

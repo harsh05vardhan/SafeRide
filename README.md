@@ -6,7 +6,7 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 1 of 18 complete (project scaffold). See
+> **Status:** Phase 2 of 18 complete (auth, users, drivers, JWT security). See
 > [Roadmap](#roadmap) below for what's implemented vs. planned.
 
 ## Table of contents
@@ -126,9 +126,9 @@ safeRide/
 ├── saferide-backend/
 │   └── src/main/java/com/saferide/
 │       ├── SafeRideApplication.java
-│       ├── auth/            (Phase 2)
-│       ├── user/            (Phase 2)
-│       ├── driver/          (Phase 3)
+│       ├── auth/            JWT issuance/refresh/logout, register/login, security filter
+│       ├── user/            User, Role, CustomerController, profile self-service
+│       ├── driver/          Driver profile, driver self-registration
 │       ├── vehicle/         (Phase 3)
 │       ├── ride/            (Phase 4)
 │       ├── fare/            (Phase 5)
@@ -139,9 +139,10 @@ safeRide/
 │       ├── notification/    (Phase 12)
 │       ├── complaint/       (Phase 12)
 │       ├── admin/           (Phase 9)
-│       ├── common/          ApiResponse, ApiErrorResponse, PingController
-│       ├── config/          CorsConfig, OpenApiConfig
-│       └── exception/       (Phase 4 — GlobalExceptionHandler + custom exceptions)
+│       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable
+│       ├── config/          CorsConfig, OpenApiConfig, SecurityConfig, JwtAuthenticationEntryPoint,
+│       │                    JwtAccessDeniedHandler, JpaAuditingConfig, DevDataSeeder, ProdSafetyChecks
+│       └── exception/       ApiException + GlobalExceptionHandler (extended per-phase with new exceptions)
 │   └── src/main/resources/
 │       ├── application.yml
 │       ├── application-dev.yml
@@ -215,16 +216,37 @@ Every response uses one of two envelopes:
 }
 ```
 
-Endpoint groups (`/api/auth`, `/api/customers`, `/api/drivers`, `/api/rides`,
-`/api/fare`, `/api/payments`, `/api/ratings`, `/api/complaints`,
-`/api/admin`, ...) are introduced with the phase that implements them and
-documented live via Swagger UI once the app is running:
+Endpoint groups not listed below (`/api/rides`, `/api/fare`, `/api/payments`,
+`/api/ratings`, `/api/complaints`, `/api/admin`, ...) are introduced with the
+phase that implements them and documented live via Swagger UI once the app
+is running:
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-Right now (Phase 1) the only live endpoint is an unauthenticated liveness
-check: `GET /api/ping`.
+### Live endpoints (Phase 1 + 2)
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/ping` | Public | Liveness check |
+| POST | `/api/auth/register` | Public | `role: CUSTOMER \| DRIVER`; `licenseNumber` required when `role=DRIVER` |
+| POST | `/api/auth/login` | Public | `identifier` accepts email or phone |
+| POST | `/api/auth/refresh` | Public | Rotates the refresh token; the old one is revoked |
+| POST | `/api/auth/logout` | Public | Revokes the given refresh token (idempotent) |
+| GET / PUT | `/api/customers/profile` | `CUSTOMER` | Always operates on the caller's own account |
+| POST | `/api/drivers/register` | Any authenticated user | Adds the DRIVER role + driver profile to the current account; re-login/refresh needed to pick up the new role |
+| GET | `/api/drivers/profile` | `DRIVER` | |
+
+Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
+JWTs carrying `sub` (user id), `email` and `roles` claims - no DB hit per
+request. Refresh tokens (7 days default, `JWT_REFRESH_EXPIRATION`) are opaque
+random values stored only as a SHA-256 hash, rotated on every use, and
+revocable server-side (what makes logout actually work). See
+[`AuthService`](saferide-backend/src/main/java/com/saferide/auth/AuthService.java)
+for the full flow.
+
+**Dev-only seed accounts** (see [Seed data](#seed--demo-credentials-phase-2)
+below) let you log in immediately without registering.
 
 ## Local setup
 
@@ -298,13 +320,17 @@ cd saferide-backend
 mvn test
 ```
 
-Phase 1 ships a Spring context smoke test
-([`SafeRideApplicationTests`](saferide-backend/src/test/java/com/saferide/SafeRideApplicationTests.java))
-running against an in-memory H2 database (`application-test.yml`) so tests
-never require Docker/MySQL to be running. Domain-level tests (fare
-calculation, fare locking, matching, reliability scoring, OTP, concurrency)
-are added alongside each phase that introduces the behavior; Testcontainers
-(real MySQL in tests) arrives in Phase 14.
+All tests run against an in-memory H2 database (`application-test.yml`), so
+none of them require Docker/MySQL to be running:
+
+- [`SafeRideApplicationTests`](saferide-backend/src/test/java/com/saferide/SafeRideApplicationTests.java) — Spring context smoke test.
+- [`JwtServiceTest`](saferide-backend/src/test/java/com/saferide/auth/JwtServiceTest.java) — token round-trip, expiry, tamper rejection.
+- [`AuthServiceTest`](saferide-backend/src/test/java/com/saferide/auth/AuthServiceTest.java) — register/login/refresh-rotation/logout business logic (Mockito).
+- [`AuthIntegrationTest`](saferide-backend/src/test/java/com/saferide/auth/AuthIntegrationTest.java) — full HTTP-shaped flow: register → login → call a protected endpoint → cross-role 403 → refresh rotation → logout revocation → validation errors, all through real MockMvc requests (no `@WithMockUser` shortcuts).
+
+Domain-level tests (fare calculation, fare locking, matching, reliability
+scoring, OTP, concurrency) are added alongside each phase that introduces
+the behavior; Testcontainers (real MySQL in tests) arrives in Phase 14.
 
 ## CI/CD
 
@@ -325,8 +351,8 @@ events are in place.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Project setup — Spring Boot, React, MySQL, Git, basic structure | ✅ Done |
-| 2 | User/Customer/Driver/Admin, JWT auth, Spring Security | ⏳ Next |
-| 3 | Vehicle, driver verification, driver status | Planned |
+| 2 | User/Customer/Driver/Admin, JWT auth, Spring Security | ✅ Done |
+| 3 | Vehicle, driver verification, driver status | ⏳ Next |
 | 4 | Ride booking, ride state machine, ride APIs | Planned |
 | 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | Planned |
 | 6 | Driver matching, reliability score, automatic reassignment | Planned |
@@ -345,9 +371,19 @@ events are in place.
 
 ---
 
-### Seed / demo credentials (Phase 2+)
+### Seed / demo credentials (Phase 2)
 
-Development-only accounts will be seeded once auth exists
-(`customer@example.com`, `driver@example.com`, `admin@example.com` with a
-clearly-marked dev-only password) — never usable against a production
-database.
+Seeded automatically on startup under the `dev` profile only (never `test`
+or `prod`) by
+[`DevDataSeeder`](saferide-backend/src/main/java/com/saferide/config/DevDataSeeder.java) —
+log in with these immediately, no registration needed:
+
+| Email | Password | Role | Notes |
+|---|---|---|---|
+| `customer@example.com` | `Password123!` | CUSTOMER | |
+| `driver@example.com` | `Password123!` | DRIVER | Pre-verified, so it can be used end-to-end without the Phase 3 admin-verification step |
+| `admin@example.com` | `Password123!` | ADMIN | |
+
+These are intentionally public, dev-only credentials — never reachable in
+`prod` (`ProdSafetyChecks` also refuses to boot the `prod` profile if
+`JWT_SECRET` was left at its dev default).
