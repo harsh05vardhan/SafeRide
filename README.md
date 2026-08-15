@@ -6,9 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 6 of 18 complete (driver matching, reliability score,
-> automatic reassignment). See [Roadmap](#roadmap) below for what's
-> implemented vs. planned.
+> **Status:** Phase 7 of 18 complete (customer frontend — login through live
+> ride tracking). See [Roadmap](#roadmap) below for what's implemented vs.
+> planned.
 
 ## Table of contents
 
@@ -156,15 +156,24 @@ safeRide/
 ├── saferide-frontend/
 │   └── src/
 │       ├── assets/
-│       ├── components/{common,layout,map,ride,driver,admin,auth,safety}/
-│       ├── pages/{auth,customer,driver,admin}/
-│       ├── services/        api.ts (Axios instance)
-│       ├── hooks/
-│       ├── contexts/
-│       ├── types/
-│       ├── utils/
-│       ├── lib/              utils.ts (shadcn `cn` helper)
-│       ├── routes/           AppRoutes.tsx
+│       ├── components/
+│       │   ├── common/       Button, Input, Card, Badge, Spinner, Skeleton,
+│       │   │                 ConfirmDialog, StateViews, ProtectedRoute
+│       │   ├── layout/       Navbar, MobileBottomNav, CustomerLayout
+│       │   ├── map/          MapView, Pickup/Destination/DriverMarker, RouteLine
+│       │   ├── ride/         LocationPicker
+│       │   ├── driver/       (Phase 8) admin/ (Phase 9) safety/ (Phase 12)
+│       ├── pages/
+│       │   ├── auth/         LoginPage, RegisterPage
+│       │   └── customer/     HomePage, RideOptionsPage, FareBreakdownPage,
+│       │                     FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage
+│       ├── services/         api.ts (Axios + JWT/refresh interceptors), authService,
+│       │                     rideService, fareService, customerService
+│       ├── contexts/         AuthContext, BookingContext, ToastContext
+│       ├── types/            auth.ts, ride.ts, fare.ts - mirror the backend DTOs exactly
+│       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
+│       │                     suggestedLocations.ts
+│       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
 │       ├── App.tsx
 │       └── main.tsx
 ├── docker-compose.dev.yml     local MySQL + Redis for native `mvn`/`npm` dev
@@ -350,6 +359,64 @@ See [`DriverMatchingService`](saferide-backend/src/main/java/com/saferide/matchi
 and [`MatchingIntegrationTest`](saferide-backend/src/test/java/com/saferide/matching/MatchingIntegrationTest.java)
 for the full mechanism and its test coverage.
 
+## Customer frontend
+
+The full customer journey - login through live tracking - against the real
+backend, no mocked data:
+
+**Login → Home → Ride Options → Fare Breakdown → Finding Driver → Ride
+Tracking → My Rides / Profile.**
+
+A few design decisions worth calling out:
+
+- **No fake network calls.** Every page hits the real API through a typed
+  service layer (`authService`, `rideService`, `fareService`,
+  `customerService`) whose request/response types
+  ([`types/auth.ts`](saferide-frontend/src/types/auth.ts),
+  [`types/ride.ts`](saferide-frontend/src/types/ride.ts),
+  [`types/fare.ts`](saferide-frontend/src/types/fare.ts)) mirror the
+  backend DTOs field-for-field.
+- **JWT handled once, centrally.** [`services/api.ts`](saferide-frontend/src/services/api.ts)
+  attaches the access token to every request and, on a 401, transparently
+  refreshes and retries the original call - concurrent 401s all await the
+  same in-flight refresh rather than each firing their own. A refresh
+  that itself fails clears the session and redirects to `/login` via a
+  `window` event `AuthContext` listens for (keeps the interceptor, which
+  has no router context, decoupled from navigation).
+- **"Confirm & Book Ride" does exactly what the backend contract says.**
+  The fare-breakdown page's confirm button calls `POST /api/rides` then
+  immediately `POST /api/rides/{id}/fare/confirm` - create, then lock -
+  matching [`RideService`](saferide-backend/src/main/java/com/saferide/ride/RideService.java)'s
+  actual two-step design (see [Fare Lock](#fare-lock--how-the-guarantee-actually-holds)
+  above) instead of a UI that implies the fare was "locked" before a ride
+  even exists.
+- **No fake geocoding.** `MapService` is backend-only and has no
+  address-lookup capability yet, so pickup/destination selection is a
+  curated list of known-coordinate Guwahati landmarks
+  ([`lib/suggestedLocations.ts`](saferide-frontend/src/lib/suggestedLocations.ts))
+  or a pin dropped directly on the map - never a text field that silently
+  fails to resolve to real coordinates.
+- **Polling, not a fake "real-time" indicator.** Finding-driver and
+  ride-tracking both poll `GET /api/rides/{id}` every few seconds via
+  TanStack Query's `refetchInterval` (stopping automatically once a ride
+  reaches a terminal status) - genuinely live within a few seconds, but
+  intentionally not dressed up as WebSocket push, which arrives for real
+  in Phase 10.
+- **The OTP is shown only where the backend allows it.** `GET /api/rides/{id}`
+  only ever returns `otp` in the ride's own customer response (see Phase
+  5) - the tracking page's OTP banner isn't hiding it from the driver by
+  choice, it's rendering exactly what the API returned.
+- **Deferred, not faked.** Payment, rating, the Safety Center, and Support
+  have no backend yet (Phase 12) - rather than build screens that call
+  nothing, the post-ride summary says so plainly, and SOS/Share/Call/Chat
+  are visibly present (matching the design brief) but explicitly
+  "coming soon" when tapped, never a silent no-op.
+- **Every route is lazy-loaded.** [`routes/AppRoutes.tsx`](saferide-frontend/src/routes/AppRoutes.tsx)
+  code-splits every page - the Leaflet map stack (the single heaviest
+  dependency in the app) never loads for someone who's only looking at
+  the login screen. Splitting brought the main bundle from ~700KB to
+  ~395KB gzip-measured at build time.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -422,7 +489,7 @@ revocable server-side (what makes logout actually work). See
 [`AuthService`](saferide-backend/src/main/java/com/saferide/auth/AuthService.java)
 for the full flow.
 
-**Dev-only seed accounts** (see [Seed data](#seed--demo-credentials-phase-2)
+**Dev-only seed accounts** (see [Seed data](#seed--demo-credentials)
 below) let you log in immediately without registering - the seeded driver
 is pre-verified with a pre-verified active vehicle, so it's ready to go
 online immediately.
@@ -463,10 +530,11 @@ npm install
 npm run dev
 ```
 
-Runs on `http://localhost:5173`. The landing page pings the backend and
-shows the connection status — a green line means the full stack (Vite →
-Axios → Spring Boot → `ApiResponse` envelope → back to React) is wired
-correctly.
+Runs on `http://localhost:5173` and redirects to `/login`. Register a new
+account (or use a [seed account](#seed--demo-credentials)) to book
+a real ride end to end - the seeded `driver@example.com` is online,
+verified, and positioned at Guwahati Railway Station, so a ride booked
+from there gets proactively matched to it immediately.
 
 ## Environment variables
 
@@ -525,6 +593,14 @@ none of them require Docker/MySQL to be running:
 Testcontainers (real MySQL in tests, replacing today's H2 profile for the
 integration suite) arrives in Phase 14.
 
+**Frontend:** automated component/E2E tests arrive in Phase 14 alongside
+the backend's Testcontainers work. Until then, every frontend phase is
+verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
+type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
+production Vite bundle) and `npm run lint` (zero warnings tolerated) -
+both clean as of Phase 7 - plus a manual pass of the real flow against
+the backend described above.
+
 ## CI/CD
 
 `.github/workflows/ci.yml` / `cd.yml` are introduced in Phase 16
@@ -549,8 +625,8 @@ events are in place.
 | 4 | Ride booking, ride state machine, ride APIs | ✅ Done |
 | 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ✅ Done |
 | 6 | Driver matching, reliability score, automatic reassignment | ✅ Done |
-| 7 | Customer frontend (login → tracking) | ⏳ Next |
-| 8 | Driver frontend (dashboard → earnings) | Planned |
+| 7 | Customer frontend (login → tracking) | ✅ Done |
+| 8 | Driver frontend (dashboard → earnings) | ⏳ Next |
 | 9 | Admin frontend | Planned |
 | 10 | WebSocket/STOMP — real-time status & location | Planned |
 | 11 | Redis — driver locations, matching, caching | Planned |
@@ -564,10 +640,10 @@ events are in place.
 
 ---
 
-### Seed / demo credentials (Phase 2–6)
+### Seed / demo credentials
 
 Seeded automatically on startup under the `dev` profile only (never `test`
-or `prod`) by
+or `prod`, added incrementally from Phase 2 through Phase 6) by
 [`DevDataSeeder`](saferide-backend/src/main/java/com/saferide/config/DevDataSeeder.java) —
 log in with these immediately, no registration needed:
 
