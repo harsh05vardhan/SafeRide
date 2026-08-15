@@ -6,9 +6,11 @@ import { AlertOctagon, Phone, MessageCircle, Star, ShieldAlert, X, CheckCircle2,
 import { rideService } from "@/services/rideService";
 import { fareService } from "@/services/fareService";
 import { useToast } from "@/contexts/ToastContext";
+import { useRideLocationChannel, useRideStatusChannel } from "@/hooks/useRideChannel";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
+import { DriverMarker } from "@/components/map/DriverMarker";
 import { RouteLine } from "@/components/map/RouteLine";
 import { Button } from "@/components/common/Button";
 import { Badge } from "@/components/common/Badge";
@@ -17,7 +19,8 @@ import { FullPageSpinner } from "@/components/common/Spinner";
 import { extractErrorMessage } from "@/services/api";
 import { ACTIVE_TRACKING_STATUSES, type RideStatus } from "@/types/ride";
 
-const POLL_INTERVAL_MS = 4000;
+/** Fallback cadence in case the WebSocket connection is down/reconnecting - useRideStatusChannel below is what normally keeps this page current within a second or two of any change. */
+const POLL_INTERVAL_MS = 10000;
 
 const STATUS_LABEL: Record<RideStatus, string> = {
   REQUESTED: "Requesting…",
@@ -41,6 +44,7 @@ export default function RideTrackingPage() {
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const { data: ride, isPending } = useQuery({
     queryKey: ["ride", rideId],
@@ -50,6 +54,16 @@ export default function RideTrackingPage() {
       const status = query.state.data?.status;
       return status && ACTIVE_TRACKING_STATUSES.includes(status) ? POLL_INTERVAL_MS : false;
     },
+  });
+
+  useRideStatusChannel(Number(rideId) || undefined, () => {
+    void queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
+  });
+
+  // No REST round trip needed for this one - unlike status, a location has no customer/driver
+  // asymmetry to protect, so the event carries the real coordinates directly (see DriverLocationEvent).
+  useRideLocationChannel(Number(rideId) || undefined, (event) => {
+    setDriverLocation({ latitude: event.latitude, longitude: event.longitude });
   });
 
   async function cancelRide() {
@@ -130,6 +144,9 @@ export default function RideTrackingPage() {
         <PickupMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} address={ride.pickupAddress} />
         <DestinationMarker latitude={ride.destinationLatitude} longitude={ride.destinationLongitude} address={ride.destinationAddress} />
         <RouteLine from={[ride.pickupLatitude, ride.pickupLongitude]} to={[ride.destinationLatitude, ride.destinationLongitude]} />
+        {driverLocation && ride.driver && (
+          <DriverMarker latitude={driverLocation.latitude} longitude={driverLocation.longitude} label={ride.driver.name} />
+        )}
       </MapView>
 
       {/* Top bar */}

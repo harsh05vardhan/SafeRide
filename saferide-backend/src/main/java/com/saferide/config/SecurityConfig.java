@@ -37,7 +37,12 @@ public class SecurityConfig {
         "/actuator/health/**",
         "/swagger-ui/**",
         "/swagger-ui.html",
-        "/v3/api-docs/**"
+        "/v3/api-docs/**",
+        // The WebSocket handshake itself carries no Authorization header (a browser's native
+        // WebSocket API can't set one) - real authentication happens per-connection on the STOMP
+        // CONNECT frame instead, via StompAuthChannelInterceptor. Leaving /ws/** open at the HTTP
+        // layer is what lets that handshake reach the STOMP layer at all.
+        "/ws/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { rideService } from "@/services/rideService";
 import { useToast } from "@/contexts/ToastContext";
+import { useRideStatusChannel } from "@/hooks/useRideChannel";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
@@ -14,13 +15,14 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { extractErrorMessage } from "@/services/api";
 import { FullPageSpinner } from "@/components/common/Spinner";
 
-/** Polling cadence while searching - real-time push arrives with WebSocket support in Phase 10. */
-const POLL_INTERVAL_MS = 3000;
+/** Fallback cadence in case the WebSocket connection is down/reconnecting - the real-time push via useRideStatusChannel below is what normally moves this page along within a second or two of a match. */
+const POLL_INTERVAL_MS = 8000;
 
 export default function FindingDriverPage() {
   const { rideId } = useParams<{ rideId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -29,6 +31,10 @@ export default function FindingDriverPage() {
     queryFn: () => rideService.get(Number(rideId)),
     enabled: !!rideId,
     refetchInterval: POLL_INTERVAL_MS,
+  });
+
+  useRideStatusChannel(Number(rideId) || undefined, () => {
+    void queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
   });
 
   useEffect(() => {

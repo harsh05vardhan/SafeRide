@@ -90,6 +90,7 @@ public class RideService {
     private final FareService fareService;
     private final DriverMatchingService matchingService;
     private final DriverReliabilityService reliabilityService;
+    private final RideEventPublisher eventPublisher;
 
     public RideEstimateResponse estimateRoute(RideEstimateRequest request) {
         RouteEstimate estimate = mapService.estimateRoute(
@@ -159,6 +160,7 @@ public class RideService {
             transitionTo(ride, RideStatus.SEARCHING_DRIVER);
             attemptAutoAssign(ride);
             rideRepository.save(ride);
+            eventPublisher.publishStatusChange(ride);
         }
         return response;
     }
@@ -196,7 +198,9 @@ public class RideService {
             transitionTo(ride, RideStatus.REQUESTED);
         }
 
-        return toResponse(rideRepository.save(ride), true);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, true);
     }
 
     @Transactional(readOnly = true)
@@ -281,7 +285,9 @@ public class RideService {
 
         // Optimistic-lock check happens on flush: if another driver's accept() committed first,
         // this save fails with ObjectOptimisticLockingFailureException -> 409 CONCURRENT_MODIFICATION.
-        return toResponse(rideRepository.save(ride), false);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, false);
     }
 
     /**
@@ -304,7 +310,9 @@ public class RideService {
         transitionTo(ride, RideStatus.SEARCHING_DRIVER);
         attemptAutoAssign(ride);
 
-        return toResponse(rideRepository.save(ride), false);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, false);
     }
 
     @Transactional
@@ -312,7 +320,9 @@ public class RideService {
         Ride ride = getOwnedByDriver(driverUserId, rideId);
         transitionTo(ride, RideStatus.DRIVER_ARRIVED);
         ride.setOtp(generateOtp());
-        return toResponse(rideRepository.save(ride), false);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, false);
     }
 
     @Transactional
@@ -326,7 +336,9 @@ public class RideService {
 
         ride.setStatus(RideStatus.RIDE_STARTED);
         ride.setStartedAt(Instant.now());
-        return toResponse(rideRepository.save(ride), false);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, false);
     }
 
     @Transactional
@@ -338,7 +350,9 @@ public class RideService {
         // Auto-advance: the system now expects payment. The Payment domain itself lands in
         // Phase 12; this transition is a pure state-machine concern and doesn't depend on it.
         transitionTo(ride, RideStatus.PAYMENT_PENDING);
-        return toResponse(rideRepository.save(ride), false);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, false);
     }
 
     @Transactional
@@ -367,7 +381,23 @@ public class RideService {
             throw new UnauthorizedException("This ride does not belong to you");
         }
 
-        return toResponse(rideRepository.save(ride), isCustomer);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, isCustomer);
+    }
+
+    /**
+     * The one ride (if any) this driver is currently on, for routing a
+     * {@code PUT /api/drivers/location} update to the right WebSocket
+     * topic - {@code DriverController} calls this rather than duplicating
+     * the "what is my active ride" definition {@link ActiveRideStatuses}
+     * already centralizes.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Long> findActiveRideIdForDriver(Long driverUserId) {
+        Driver driver = driverService.getDriverByUserId(driverUserId);
+        return rideRepository.findFirstByDriverIdAndStatusIn(driver.getId(), ActiveRideStatuses.DRIVER)
+                .map(Ride::getId);
     }
 
     /** Tries to proactively assign the best eligible driver; leaves the ride at SEARCHING_DRIVER (fallback: {@link #listOpenRides}) if nobody qualifies. */
@@ -375,6 +405,9 @@ public class RideService {
         matchingService.findBestDriver(ride).ifPresent(driver -> {
             ride.setDriver(driver);
             transitionTo(ride, RideStatus.DRIVER_ASSIGNED);
+            // Private nudge to the newly-assigned driver - see RideEventPublisher's class doc for
+            // why this can't reuse the /topic/rides/{id}/** channel the ride's customer uses.
+            eventPublisher.publishAssignment(ride);
         });
     }
 

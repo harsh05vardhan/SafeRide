@@ -6,9 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 9 of 18 complete (admin frontend — driver verification
-> console). See [Roadmap](#roadmap) below for what's implemented vs.
-> planned.
+> **Status:** Phase 10 of 18 complete (WebSocket/STOMP — real-time ride
+> status and driver location). See [Roadmap](#roadmap) below for what's
+> implemented vs. planned.
 
 ## Table of contents
 
@@ -20,6 +20,7 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Customer frontend](#customer-frontend)
 - [Driver frontend](#driver-frontend)
 - [Admin frontend](#admin-frontend)
+- [Real-time (WebSocket)](#real-time-websocket)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -118,7 +119,8 @@ geolocation, availability, matching cache, rate limiting).
 
 **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui (Radix +
 CVA), React Router, Axios, TanStack Query, React Hook Form + Zod, Lucide
-icons, Framer Motion, React Leaflet + OpenStreetMap.
+icons, Framer Motion, React Leaflet + OpenStreetMap, `@stomp/stompjs`
+(Phase 10 — plain STOMP over native `WebSocket`, no SockJS).
 
 **DevOps:** Docker, Docker Compose, GitHub Actions (CI + CD), container
 registry.
@@ -136,7 +138,8 @@ safeRide/
 │       │                    ReliabilityCalculator + DriverReliabilityService
 │       ├── vehicle/         Vehicle entity, driver self-service registration/activation
 │       ├── ride/            Ride entity/state machine, booking, accept/decline/arrive/start/
-│       │                    complete/cancel, ActiveRideStatuses (shared with matching)
+│       │                    complete/cancel, ActiveRideStatuses (shared with matching),
+│       │                    RideEventPublisher (Phase 10 - the one place every WS broadcast goes through)
 │       ├── map/             MapService abstraction + GeoUtils - MockMapService today, Google/Mapbox later
 │       ├── fare/            FareCalculator, Fare + FareLock, the Fare Lock guarantee itself
 │       ├── matching/        DriverMatchScorer, DriverMatchingService, RideDriverExclusion -
@@ -147,6 +150,8 @@ safeRide/
 │       ├── notification/    (Phase 12)
 │       ├── complaint/       (Phase 12)
 │       ├── admin/           Driver/vehicle/document verification review (frontend console: Phase 9)
+│       ├── websocket/       (Phase 10) WebSocketConfig, StompAuthChannelInterceptor, StompPrincipal -
+│       │                    STOMP CONNECT auth + per-ride SUBSCRIBE authorization
 │       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable, AuditLog(Service)
 │       ├── config/          CorsConfig, OpenApiConfig, SecurityConfig, JwtAuthenticationEntryPoint,
 │       │                    JwtAccessDeniedHandler, JpaAuditingConfig, DevDataSeeder, ProdSafetyChecks
@@ -184,10 +189,13 @@ safeRide/
 │       │                     rideService (customer + driver actions), fareService,
 │       │                     customerService, driverService, vehicleService (Phase 8),
 │       │                     adminService (Phase 9)
-│       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8)
-│       ├── contexts/         AuthContext (isCustomer/isDriver/isAdmin), BookingContext, ToastContext
+│       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8),
+│       │                     useRideChannel (Phase 10 - useRideStatusChannel/
+│       │                     useRideLocationChannel/useDriverAssignmentChannel)
+│       ├── contexts/         AuthContext (isCustomer/isDriver/isAdmin), BookingContext, ToastContext,
+│       │                     WebSocketContext (Phase 10 - one STOMP connection per session)
 │       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts,
-│       │                     admin.ts - mirror the backend DTOs exactly
+│       │                     admin.ts, ws.ts (Phase 10) - mirror the backend DTOs exactly
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
@@ -413,12 +421,12 @@ A few design decisions worth calling out:
   ([`lib/suggestedLocations.ts`](saferide-frontend/src/lib/suggestedLocations.ts))
   or a pin dropped directly on the map - never a text field that silently
   fails to resolve to real coordinates.
-- **Polling, not a fake "real-time" indicator.** Finding-driver and
-  ride-tracking both poll `GET /api/rides/{id}` every few seconds via
-  TanStack Query's `refetchInterval` (stopping automatically once a ride
-  reaches a terminal status) - genuinely live within a few seconds, but
-  intentionally not dressed up as WebSocket push, which arrives for real
-  in Phase 10.
+- **Real-time push, with polling only as a fallback.** Finding-driver and
+  ride-tracking both subscribe to `/topic/rides/{id}/status` and react
+  within a second or two of any change; `GET /api/rides/{id}` via TanStack
+  Query's `refetchInterval` still runs underneath, just far less
+  frequently, so a mid-reconnect socket never leaves the page stale for
+  more than one fallback tick. See [Real-time (WebSocket)](#real-time-websocket).
 - **The OTP is shown only where the backend allows it.** `GET /api/rides/{id}`
   only ever returns `otp` in the ride's own customer response (see Phase
   5) - the tracking page's OTP banner isn't hiding it from the driver by
@@ -559,6 +567,75 @@ A few design decisions worth calling out:
   `driver@example.com` account (already `VERIFIED`, so try registering a
   second driver locally to see the PENDING queue populate).
 
+## Real-time (WebSocket)
+
+Every polling loop from Phases 7-9 (ride status, driver assignments) now has
+a push counterpart, and driver location - which had no REST field to poll in
+the first place - exists for the first time. Plain STOMP over a native
+`WebSocket` at `/ws`, no SockJS: every browser this app targets supports
+`WebSocket` directly, so a long-polling fallback would add nothing.
+
+**Three destinations**, each solving a different constraint:
+
+| Destination | Direction | Why it's shaped this way |
+|---|---|---|
+| `/topic/rides/{id}/status` | Broadcast to the ride's own customer + driver | Deliberately minimal (`rideId`, `status`, `updatedAt`) - **no `otp`, no per-caller fields**. `RideResponse` varies by who's asking (only the customer ever sees the OTP - see [Fare Lock](#fare-lock--how-the-guarantee-actually-holds)'s sibling guarantee), but this channel is shared by both participants, so it can only ever carry what's safe for either of them. It's a "something changed, refetch" nudge, not a data feed - the frontend calls `queryClient.invalidateQueries(["ride", rideId])` on receipt, and the existing secure `GET /api/rides/{id}` supplies the rest. |
+| `/topic/rides/{id}/location` | Broadcast to the ride's own customer + driver | No customer/driver asymmetry to protect here, so this one *does* carry the real payload (`latitude`, `longitude`) directly - the frontend moves a map marker on every message with zero REST round trips. Fed by the driver's own device: `DriverRideDetailPage` reports a fresh position every 5s via the existing `PUT /api/drivers/location` for as long as the ride is `DRIVER_ACCEPTED`/`DRIVER_ARRIVED`/`RIDE_STARTED`. |
+| `/user/queue/assignments` | Private, per-driver | A driver has no ride id to subscribe to *before* being assigned one, unlike a customer tracking their own already-created ride - Spring's user-destination feature (resolved via `StompPrincipal.getName()`, the user id) solves that without a guessable per-driver topic. |
+
+**Authentication happens on the STOMP CONNECT frame, not the HTTP
+handshake.** A browser's native `WebSocket` can't set an `Authorization`
+header on the handshake request, so `JwtAuthenticationFilter` (HTTP-only)
+has nothing to check for `/ws` - `SecurityConfig` deliberately leaves it
+`permitAll()` at the HTTP layer. Instead, `StompAuthChannelInterceptor`
+validates the same JWT as a native STOMP header on CONNECT (exactly what
+`@stomp/stompjs`'s `beforeConnect` hook sets, re-read from storage on every
+reconnect in case it was refreshed since) and attaches the resulting
+`StompPrincipal` to the session for its lifetime.
+
+**Subscribing to someone else's ride is rejected, not filtered.** Ride ids
+are sequential and guessable, so `StompAuthChannelInterceptor` also checks
+every `SUBSCRIBE` to `/topic/rides/{id}/**` against `RideRepository`
+(session-free `EXISTS` queries - `Ride.customer`/`Ride.driver` are lazy
+associations, and the interceptor runs on the message channel, not a
+request thread, so hydrating either would throw
+`LazyInitializationException`) before it's allowed to succeed - an
+unauthorized subscription never receives anything to begin with, rather
+than quietly filtering a broadcast after the fact.
+
+**A broadcast only ever describes a committed state.** `RideEventPublisher`
+- the one place every send in the app goes through - never calls
+`SimpMessagingTemplate` directly; it registers a
+`TransactionSynchronization.afterCommit` callback instead. `RideService`'s
+mutating methods call it from inside their own `@Transactional` boundary,
+before returning - broadcasting immediately would risk telling a client a
+ride reached e.g. `DRIVER_ACCEPTED` moments before a concurrent `@Version`
+conflict rolled that exact save back (see
+[Concurrency](#concurrency--optimistic-locking)). A push that can describe
+a state that never actually persisted would be worse than no push at all.
+
+**The frontend's polling didn't disappear, it demoted to a fallback.**
+Every page that used to poll every 3-5s now polls every 8-15s instead of
+not at all - if the socket is mid-reconnect (a network blip, a laptop
+waking from sleep), the page still catches up within one fallback tick
+rather than going stale indefinitely.
+`WebSocketProvider` ([`contexts/WebSocketContext.tsx`](saferide-frontend/src/contexts/WebSocketContext.tsx))
+holds one STOMP connection per authenticated session and a registry of
+desired subscriptions that's replayed in full on every `onConnect` -
+including reconnects - so a component calling
+[`useRideStatusChannel`/`useRideLocationChannel`/`useDriverAssignmentChannel`](saferide-frontend/src/hooks/useRideChannel.ts)
+never has to know whether the underlying socket just dropped and came back.
+
+See [`WebSocketConfig`](saferide-backend/src/main/java/com/saferide/websocket/WebSocketConfig.java),
+[`StompAuthChannelInterceptor`](saferide-backend/src/main/java/com/saferide/websocket/StompAuthChannelInterceptor.java),
+[`RideEventPublisher`](saferide-backend/src/main/java/com/saferide/ride/RideEventPublisher.java),
+and [`RideWebSocketIntegrationTest`](saferide-backend/src/test/java/com/saferide/websocket/RideWebSocketIntegrationTest.java)
+(a real WebSocket connection end to end - CONNECT rejected without a valid
+token, a stranger's SUBSCRIBE to someone else's ride rejected, a customer
+receiving a live status event, a driver receiving a private assignment
+notification, and a location broadcast) for the full mechanism and its
+test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -622,6 +699,18 @@ live via Swagger UI once the app is running:
 | POST | `/api/rides/{id}/complete` | `DRIVER` (assigned) | Auto-advances straight to `PAYMENT_PENDING` |
 | POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED` (terminal); driver → excluded + reliability updated + **automatically reassigned** (or back to `SEARCHING_DRIVER` if nobody's left); blocked once `RIDE_STARTED` |
 | POST | `/api/fare/calculate` | `CUSTOMER` | Standalone preview (e.g. one call per vehicle card on the ride-options page) - computes but never persists anything |
+
+### Real-time channels (Phase 10)
+
+Not REST - a single STOMP-over-WebSocket connection at `/ws`, authenticated
+on the CONNECT frame (see [Real-time (WebSocket)](#real-time-websocket)
+above for the full mechanism).
+
+| Destination | Who receives it | Payload |
+|---|---|---|
+| `/topic/rides/{id}/status` | The ride's own customer + assigned driver (subscription rejected for anyone else) | `{rideId, status, updatedAt}` - a refetch signal, not a data feed |
+| `/topic/rides/{id}/location` | Same as above | `{rideId, driverId, latitude, longitude, recordedAt}` - the real coordinates, fed by the driver's device every 5s while the ride is active |
+| `/user/queue/assignments` | The driver it's addressed to, privately | `{rideId, status}` - sent the moment matching proactively assigns them a ride |
 
 Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
 JWTs carrying `sub` (user id), `email` and `roles` claims - no DB hit per
@@ -699,6 +788,13 @@ directly in `application.yml` since a fare change is a pricing decision,
 not a per-environment secret. See
 [`FareProperties`](saferide-backend/src/main/java/com/saferide/fare/FareProperties.java).
 
+The WebSocket endpoint needs no environment variable of its own on the
+backend - `WebSocketConfig` reuses `app.cors.allowed-origins`, so a `/ws`
+connection and a REST call are always allowed from the same origins by
+construction. The frontend's `VITE_WS_BASE_URL` (see `.env.example`,
+default `ws://localhost:8080/ws`) is the one new frontend-side variable
+this phase adds.
+
 ## Docker
 
 - `docker-compose.dev.yml` — **today.** MySQL 8.4 + Redis 7.4 only, so the
@@ -731,6 +827,7 @@ none of them require Docker/MySQL to be running:
 - [`DriverMatchScorerTest`](saferide-backend/src/test/java/com/saferide/matching/DriverMatchScorerTest.java) — reproduces the spec's own example verbatim (a driver further away but better-rated with a lower cancellation rate outranks the nearest one), plus isolated checks that distance, rating, and cancellation rate each move the score in the right direction, and that out-of-radius distance never makes the score negative.
 - [`ReliabilityCalculatorTest`](saferide-backend/src/test/java/com/saferide/driver/ReliabilityCalculatorTest.java) — a perfect driver scores exactly 100, the worst possible driver scores exactly 0 (never negative), cancellation rate reduces the score proportionally to its configured weight, and the complaint penalty is capped rather than unbounded.
 - [`MatchingIntegrationTest`](saferide-backend/src/test/java/com/saferide/matching/MatchingIntegrationTest.java) — the full Phase 6 pipeline through real HTTP requests: confirming a fare proactively assigns the best of several otherwise-identical drivers; a driver not assigned can't accept; the assigned driver declines and is permanently excluded while matching immediately reassigns to the next-best driver; the decliner can never claw the ride back through *either* `/api/rides/{id}/accept` or the `/api/rides/open` fallback; declining/cancelling measurably move `acceptanceRate`/`cancellationRate`; a post-acceptance cancellation auto-reassigns to a third driver instead of dead-ending; and a ride with zero eligible drivers waits at `SEARCHING_DRIVER` until one comes online and self-claims it.
+- [`RideWebSocketIntegrationTest`](saferide-backend/src/test/java/com/saferide/websocket/RideWebSocketIntegrationTest.java) — a real WebSocket connection end to end (`StandardWebSocketClient` + `WebSocketStompClient` against a random-port `@SpringBootTest`, not MockMvc, which can't exercise an upgraded connection): connecting without a valid token is rejected; a customer subscribed to their own ride's status topic receives a live event the instant a real REST call (the driver accepting) transitions it; a stranger's subscription to someone else's ride topic is rejected outright; a driver receives a private `/user/queue/assignments` notification the moment matching proactively assigns them a ride; and a `PUT /api/drivers/location` call broadcasts to the ride's own location topic with the exact coordinates sent.
 
 Testcontainers (real MySQL in tests, replacing today's H2 profile for the
 integration suite) arrives in Phase 14.
@@ -740,7 +837,7 @@ the backend's Testcontainers work. Until then, every frontend phase is
 verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
 type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
 production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 9 - plus a manual pass of the real flow against
+both clean as of Phase 10 - plus a manual pass of the real flow against
 the backend described above.
 
 ## CI/CD
@@ -770,8 +867,8 @@ events are in place.
 | 7 | Customer frontend (login → tracking) | ✅ Done |
 | 8 | Driver frontend (dashboard → earnings) | ✅ Done |
 | 9 | Admin frontend (driver verification console) | ✅ Done |
-| 10 | WebSocket/STOMP — real-time status & location | ⏳ Next |
-| 11 | Redis — driver locations, matching, caching | Planned |
+| 10 | WebSocket/STOMP — real-time status & location | ✅ Done |
+| 11 | Redis — driver locations, matching, caching | ⏳ Next |
 | 12 | Payment, rating, complaints, safety | Planned |
 | 13 | Kafka events, notifications, analytics | Planned |
 | 14 | Testing — JUnit, Mockito, Testcontainers | Planned |

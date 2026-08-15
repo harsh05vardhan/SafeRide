@@ -8,6 +8,7 @@ import com.saferide.driver.dto.DriverLocationUpdateRequest;
 import com.saferide.driver.dto.DriverProfileResponse;
 import com.saferide.driver.dto.DriverRegisterRequest;
 import com.saferide.driver.dto.DriverStatusUpdateRequest;
+import com.saferide.ride.RideEventPublisher;
 import com.saferide.ride.RideService;
 import com.saferide.ride.dto.RideResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,7 @@ public class DriverController {
     private final DriverService driverService;
     private final DriverDocumentService documentService;
     private final RideService rideService;
+    private final RideEventPublisher rideEventPublisher;
 
     /**
      * Note: since access tokens are stateless JWTs, a token issued before
@@ -78,6 +80,11 @@ public class DriverController {
             @AuthenticationPrincipal AuthenticatedUser principal,
             @Valid @RequestBody DriverLocationUpdateRequest request) {
         var profile = driverService.updateLocation(principal.userId(), request.latitude(), request.longitude());
+        // Only worth broadcasting if this driver is actually on a ride right now - a location
+        // report while idle/browsing has nobody subscribed to any /topic/rides/{id}/location.
+        rideService.findActiveRideIdForDriver(principal.userId())
+                .ifPresent(rideId -> rideEventPublisher.publishDriverLocation(
+                        rideId, profile.id(), request.latitude(), request.longitude()));
         return ApiResponse.ok("Location updated", profile);
     }
 

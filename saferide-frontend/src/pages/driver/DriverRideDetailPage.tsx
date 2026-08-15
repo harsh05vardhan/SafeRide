@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Navigation, MapPin, Phone, CheckCircle2, XCircle, KeyRound } from "lucide-react";
 import { rideService } from "@/services/rideService";
 import { fareService } from "@/services/fareService";
+import { driverService } from "@/services/driverService";
 import { useToast } from "@/contexts/ToastContext";
+import { useRideStatusChannel } from "@/hooks/useRideChannel";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
@@ -18,7 +20,8 @@ import { IncomingRequestCard } from "@/components/driver/IncomingRequestCard";
 import { extractErrorMessage } from "@/services/api";
 import { ACTIVE_TRACKING_STATUSES } from "@/types/ride";
 
-const POLL_INTERVAL_MS = 4000;
+/** Fallback cadence in case the WebSocket connection is down/reconnecting - most transitions on this page are driver-initiated and self-refresh immediately (see refresh() below); this mainly catches a customer cancelling from their side. */
+const POLL_INTERVAL_MS = 10000;
 
 export default function DriverRideDetailPage() {
   const { rideId } = useParams<{ rideId: string }>();
@@ -38,6 +41,33 @@ export default function DriverRideDetailPage() {
       return status && ACTIVE_TRACKING_STATUSES.includes(status) ? POLL_INTERVAL_MS : false;
     },
   });
+
+  useRideStatusChannel(Number(rideId) || undefined, () => {
+    void queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
+  });
+
+  // Reports this driver's live position every few seconds for the whole time they're actually
+  // committed to the trip - PUT /api/drivers/location broadcasts it straight to the customer's
+  // map (see RideTrackingPage) with no further action needed here.
+  useEffect(() => {
+    if (!ride || !navigator.geolocation) return;
+    if (!["DRIVER_ACCEPTED", "DRIVER_ARRIVED", "RIDE_STARTED"].includes(ride.status)) return;
+
+    const reportPosition = () => {
+      navigator.geolocation.getCurrentPosition((position) => {
+        void driverService.updateLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      });
+    };
+    reportPosition();
+    const interval = setInterval(reportPosition, 5000);
+    return () => clearInterval(interval);
+    // Deliberately keyed on status alone - `ride` gets a new object identity on every poll/
+    // refetch even when nothing relevant changed, which would otherwise restart this interval constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride?.status]);
 
   const isFinished = !!ride && ["RIDE_COMPLETED", "PAYMENT_PENDING", "PAYMENT_COMPLETED", "RATED"].includes(ride.status);
   const { data: fare } = useQuery({

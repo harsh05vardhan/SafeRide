@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BookingProvider } from "@/contexts/BookingContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import AppRoutes from "@/routes/AppRoutes";
 
 const queryClient = new QueryClient({
@@ -20,9 +21,11 @@ export default function App() {
       <BrowserRouter>
         <ToastProvider>
           <AuthProvider>
-            <BookingProvider>
-              <AppRoutes />
-            </BookingProvider>
+            <WebSocketProvider>
+              <BookingProvider>
+                <AppRoutes />
+              </BookingProvider>
+            </WebSocketProvider>
           </AuthProvider>
         </ToastProvider>
       </BrowserRouter>
