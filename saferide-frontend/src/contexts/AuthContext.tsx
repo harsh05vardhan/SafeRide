@@ -10,6 +10,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isCustomer: boolean;
   isDriver: boolean;
+  isAdmin: boolean;
   login: (request: LoginRequest) => Promise<void>;
   register: (request: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: user !== null,
       isCustomer: user?.roles.includes("CUSTOMER") ?? false,
       isDriver: user?.roles.includes("DRIVER") ?? false,
+      isAdmin: user?.roles.includes("ADMIN") ?? false,
       login,
       register,
       logout,

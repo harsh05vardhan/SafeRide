@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/common/ProtectedRoute";
 import { CustomerLayout } from "@/components/layout/CustomerLayout";
 import { DriverLayout } from "@/components/layout/DriverLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 import { FullPageSpinner } from "@/components/common/Spinner";
 
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
@@ -22,6 +23,10 @@ const DriverRidesPage = lazy(() => import("@/pages/driver/DriverRidesPage"));
 const DriverRideDetailPage = lazy(() => import("@/pages/driver/DriverRideDetailPage"));
 const DriverEarningsPage = lazy(() => import("@/pages/driver/DriverEarningsPage"));
 const DriverProfilePage = lazy(() => import("@/pages/driver/DriverProfilePage"));
+
+const AdminDashboardPage = lazy(() => import("@/pages/admin/AdminDashboardPage"));
+const AdminDriversPage = lazy(() => import("@/pages/admin/AdminDriversPage"));
+const AdminDriverDetailPage = lazy(() => import("@/pages/admin/AdminDriverDetailPage"));
 
 /**
  * Central route table. Grows one page per phase (driver pages in Phase 8,
@@ -73,6 +78,15 @@ export default function AppRoutes() {
             <Route path="/driver/rides" element={<DriverRidesPage />} />
             <Route path="/driver/earnings" element={<DriverEarningsPage />} />
             <Route path="/driver/profile" element={<DriverProfilePage />} />
+          </Route>
+        </Route>
+
+        {/* Admin: verification console */}
+        <Route element={<ProtectedRoute requiredRole="ADMIN" />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin/drivers" element={<AdminDriversPage />} />
+            <Route path="/admin/drivers/:driverId" element={<AdminDriverDetailPage />} />
           </Route>
         </Route>
 

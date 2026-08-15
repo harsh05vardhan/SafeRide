@@ -6,8 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 8 of 18 complete (driver frontend — dashboard through
-> earnings). See [Roadmap](#roadmap) below for what's implemented vs.
+> **Status:** Phase 9 of 18 complete (admin frontend — driver verification
+> console). See [Roadmap](#roadmap) below for what's implemented vs.
 > planned.
 
 ## Table of contents
@@ -19,6 +19,7 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Database design](#database-design)
 - [Customer frontend](#customer-frontend)
 - [Driver frontend](#driver-frontend)
+- [Admin frontend](#admin-frontend)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -145,7 +146,7 @@ safeRide/
 │       ├── safety/          (Phase 12)
 │       ├── notification/    (Phase 12)
 │       ├── complaint/       (Phase 12)
-│       ├── admin/           Driver/vehicle/document verification review (full dashboard: Phase 9)
+│       ├── admin/           Driver/vehicle/document verification review (frontend console: Phase 9)
 │       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable, AuditLog(Service)
 │       ├── config/          CorsConfig, OpenApiConfig, SecurityConfig, JwtAuthenticationEntryPoint,
 │       │                    JwtAccessDeniedHandler, JpaAuditingConfig, DevDataSeeder, ProdSafetyChecks
@@ -162,26 +163,31 @@ safeRide/
 │       │   ├── common/       Button, Input, Card, Badge, Spinner, Skeleton,
 │       │   │                 ConfirmDialog, StateViews, ProtectedRoute (role-gated)
 │       │   ├── layout/       Navbar/MobileBottomNav/CustomerLayout,
-│       │   │                 DriverNavbar/DriverMobileBottomNav/DriverLayout (Phase 8)
+│       │   │                 DriverNavbar/DriverMobileBottomNav/DriverLayout (Phase 8),
+│       │   │                 AdminNavbar/AdminLayout (Phase 9, no mobile bottom nav)
 │       │   ├── map/          MapView, Pickup/Destination/DriverMarker, RouteLine
 │       │   ├── ride/         LocationPicker
 │       │   ├── driver/       (Phase 8) StatCard, IncomingRequestCard
-│       │   └── admin/ (Phase 9) safety/ (Phase 12)
+│       │   ├── admin/        (Phase 9) StatusBadges, ReasonConfirmDialog
+│       │   └── safety/ (Phase 12)
 │       ├── pages/
 │       │   ├── auth/         LoginPage, RegisterPage (role picker built in)
 │       │   ├── RoleLandingPage.tsx  "/" - routes single-role accounts straight
-│       │   │                 through, shows a chooser for dual-role accounts
+│       │   │                 through, shows a chooser for multi-role accounts
 │       │   ├── customer/     HomePage, RideOptionsPage, FareBreakdownPage,
 │       │   │                 FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage
-│       │   └── driver/       (Phase 8) DriverDashboardPage, DriverRidesPage,
-│       │                     DriverRideDetailPage, DriverEarningsPage, DriverProfilePage
+│       │   ├── driver/       (Phase 8) DriverDashboardPage, DriverRidesPage,
+│       │   │                 DriverRideDetailPage, DriverEarningsPage, DriverProfilePage
+│       │   └── admin/        (Phase 9) AdminDashboardPage, AdminDriversPage,
+│       │                     AdminDriverDetailPage
 │       ├── services/         api.ts (Axios + JWT/refresh interceptors), authService,
 │       │                     rideService (customer + driver actions), fareService,
-│       │                     customerService, driverService, vehicleService (Phase 8)
+│       │                     customerService, driverService, vehicleService (Phase 8),
+│       │                     adminService (Phase 9)
 │       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8)
-│       ├── contexts/         AuthContext (isCustomer/isDriver), BookingContext, ToastContext
-│       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts -
-│       │                     mirror the backend DTOs exactly
+│       ├── contexts/         AuthContext (isCustomer/isDriver/isAdmin), BookingContext, ToastContext
+│       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts,
+│       │                     admin.ts - mirror the backend DTOs exactly
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
@@ -497,6 +503,62 @@ A few design decisions worth calling out:
   arrive in a later phase") instead of faking a file picker that has
   nowhere real to send the bytes.
 
+## Admin frontend
+
+The backend's admin surface today is exactly `/api/admin/drivers/**` -
+driver, vehicle and document verification review (`AdminDriverController`).
+There's no `/api/admin/users`, `/api/admin/rides`, `/api/admin/payments`,
+`/api/admin/complaints` or `/api/admin/reports` endpoint yet - those land
+with the phases that give admins something real to review (ride monitoring
+needs Phase 10's live status, payments/complaints need Phase 12). So Phase 9
+builds the **driver verification console** end to end rather than a wider
+dashboard with panels that call nothing:
+
+**Login → Role Landing → Dashboard (counts + pending queue) → Drivers (filter
++ paginate) → Driver Detail (approve/block driver, approve/reject each
+vehicle and document).**
+
+A few design decisions worth calling out:
+
+- **The role model generalized, not duplicated.** `AuthContext` already had
+  `isCustomer`/`isDriver` from Phase 8; Phase 9 adds `isAdmin` next to them
+  and widens `ProtectedRoute`'s `requiredRole` prop from
+  `"CUSTOMER" | "DRIVER"` to the full `RoleName` rather than writing a
+  second, admin-specific guard component.
+  [`RoleLandingPage`](saferide-frontend/src/pages/RoleLandingPage.tsx)'s
+  chooser is now driven by an array of `{role, to, label, icon}` entries
+  filtered against whichever roles the account actually has, so it already
+  supports three roles - or, in principle, more - without another rewrite.
+- **No summary endpoint, so the frontend doesn't invent one.** The
+  dashboard's stat cards (total / pending / verified / rejected) are four
+  parallel calls to the same `GET /api/admin/drivers?status=&size=1`
+  the drivers table uses, reading only `page.totalElements` - real counts
+  from the real paginated endpoint, not a client-side aggregate that could
+  drift from what the table below it actually shows.
+- **Block and reject ask *why*, approve and unblock don't.**
+  [`ReasonConfirmDialog`](saferide-frontend/src/components/admin/ReasonConfirmDialog.tsx)
+  is `ConfirmDialog` plus an optional reason field for the two actions the
+  backend's `AdminActionRequest.reason` actually persists to the audit log
+  (`PUT .../block`, `.../vehicles/{id}/reject`, `.../documents/{id}/reject`);
+  approving or unblocking is a single confirmed click with no prompt,
+  matching that only the negative actions carry a reason worth recording.
+- **One `VerificationStatus` badge, one place.** The backend deliberately
+  reuses a single `VerificationStatus` enum across `DRIVER`, `VEHICLE` and
+  `DRIVER_DOCUMENT` (see [Database design](#database-design)); the frontend
+  mirrors that with one
+  [`VerificationBadge`](saferide-frontend/src/components/admin/StatusBadges.tsx)
+  used on all three, rather than three near-identical badge components that
+  could quietly drift apart.
+- **Desktop-first, deliberately.** `AdminLayout` has no mobile bottom-tab
+  nav, unlike `CustomerLayout`/`DriverLayout` - tables and multi-field
+  review screens are what an admin console actually needs, not a phone-sized
+  card feed, so it isn't built as one.
+- **The seeded admin account works immediately.** `admin@example.com` /
+  `Password123!` (see [Seed data](#seed--demo-credentials)) logs straight
+  into `/admin/dashboard` via `RoleLandingPage` and can review the seeded
+  `driver@example.com` account (already `VERIFIED`, so try registering a
+  second driver locally to see the PENDING queue populate).
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -678,7 +740,7 @@ the backend's Testcontainers work. Until then, every frontend phase is
 verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
 type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
 production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 8 - plus a manual pass of the real flow against
+both clean as of Phase 9 - plus a manual pass of the real flow against
 the backend described above.
 
 ## CI/CD
@@ -707,8 +769,8 @@ events are in place.
 | 6 | Driver matching, reliability score, automatic reassignment | ✅ Done |
 | 7 | Customer frontend (login → tracking) | ✅ Done |
 | 8 | Driver frontend (dashboard → earnings) | ✅ Done |
-| 9 | Admin frontend | ⏳ Next |
-| 10 | WebSocket/STOMP — real-time status & location | Planned |
+| 9 | Admin frontend (driver verification console) | ✅ Done |
+| 10 | WebSocket/STOMP — real-time status & location | ⏳ Next |
 | 11 | Redis — driver locations, matching, caching | Planned |
 | 12 | Payment, rating, complaints, safety | Planned |
 | 13 | Kafka events, notifications, analytics | Planned |

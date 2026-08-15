@@ -8,15 +8,16 @@ import type { RoleName } from "@/types/auth";
  * controls what the SPA renders, so a customer never even sees a driver-
  * or admin-shaped screen to begin with.
  */
-export function ProtectedRoute({ requiredRole }: { requiredRole: Extract<RoleName, "CUSTOMER" | "DRIVER"> }) {
-  const { isAuthenticated, isCustomer, isDriver } = useAuth();
+export function ProtectedRoute({ requiredRole }: { requiredRole: RoleName }) {
+  const { isAuthenticated, isCustomer, isDriver, isAdmin } = useAuth();
   const location = useLocation();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const hasRequiredRole = requiredRole === "CUSTOMER" ? isCustomer : isDriver;
+  const hasRequiredRole =
+    requiredRole === "CUSTOMER" ? isCustomer : requiredRole === "DRIVER" ? isDriver : isAdmin;
   if (!hasRequiredRole) {
     return <Navigate to="/" replace />;
   }
