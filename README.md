@@ -6,8 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 4 of 18 complete (ride booking, ride state machine,
-> ride APIs). See [Roadmap](#roadmap) below for what's implemented vs. planned.
+> **Status:** Phase 5 of 18 complete (fare engine, fare breakdown, **Fare
+> Lock**, destination changes). See [Roadmap](#roadmap) below for what's
+> implemented vs. planned.
 
 ## Table of contents
 
@@ -132,7 +133,7 @@ safeRide/
 │       ├── vehicle/         Vehicle entity, driver self-service registration/activation
 │       ├── ride/            Ride entity/state machine, booking, accept/arrive/start/complete/cancel
 │       ├── map/             MapService abstraction - MockMapService today, Google/Mapbox later
-│       ├── fare/            (Phase 5)
+│       ├── fare/            FareCalculator, Fare + FareLock, the Fare Lock guarantee itself
 │       ├── matching/        (Phase 6)
 │       ├── payment/         (Phase 12)
 │       ├── rating/          (Phase 12)
@@ -178,8 +179,8 @@ Every package/folder above already exists in the repo (most with a
 
 Full entity list, columns and constraints are specified in the project brief
 this README accompanies; they land in the codebase starting Phase 2 (`USER`,
-`ROLE`), Phase 3 (`VEHICLE`, `DRIVER_DOCUMENT`, `AUDIT_LOG`) and Phase 4
-(`RIDE`). `FARE`/`FARE_LOCK` land in Phase 5. Summary of the core
+`ROLE`), Phase 3 (`VEHICLE`, `DRIVER_DOCUMENT`, `AUDIT_LOG`), Phase 4
+(`RIDE`) and Phase 5 (`FARE`, `FARE_LOCK`). Summary of the core
 relationships:
 
 - One `USER` has at most one `DRIVER` profile (1:0..1), can place many
@@ -192,9 +193,11 @@ relationships:
   used by `DRIVER`, `VEHICLE` and `DRIVER_DOCUMENT` alike - an admin reviews
   the person, each vehicle, and each document as independent decisions, not
   one combined flag.
-- One `RIDE` has exactly one `FARE` (Phase 5), at most one `FARE_LOCK`
-  (Phase 5), at most one `PAYMENT`, at most one `RATING`, and zero or more
-  `COMPLAINT`s.
+- One `RIDE` has exactly one `FARE` and at most one `FARE_LOCK` - both are
+  single rows **updated in place** (not appended) when a destination change
+  forces a recalculation, matching the "one fare, one lock, per ride" shape
+  the entity list implies; a ride also has at most one `PAYMENT`, at most
+  one `RATING`, and zero or more `COMPLAINT`s.
 - `RIDE.status` moves through the full lifecycle
   (`REQUESTED → SEARCHING_DRIVER → DRIVER_ASSIGNED → DRIVER_ACCEPTED →
   DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED → PAYMENT_PENDING → ...`)
@@ -231,6 +234,50 @@ matches zero rows, so Hibernate throws
 response, not a 500. No `Thread.sleep`, no manual locking - see
 `RideService.acceptRide` and the accompanying handler.
 
+### Fare Lock — how the guarantee actually holds
+
+The core promise (see [Why SafeRide](#why-saferide)) isn't a UI badge, it's
+a sequence of structural facts:
+
+1. **The formula only runs on the backend.** `FareCalculator` is the one
+   place `baseFare + distanceKm×perKmRate + durationMinutes×perMinuteRate +
+   platformFee − discount` is computed - both `POST /api/fare/calculate`
+   (a preview) and every fare actually attached to a ride call through it.
+   Nothing ever accepts a fare number from the client.
+2. **A ride starts invisible to drivers.** `POST /api/rides` leaves the
+   ride at `REQUESTED` and creates its `Fare` row, but `RideStateMachine`
+   has no `REQUESTED -> DRIVER_ASSIGNED` edge - a ride can only ever
+   become visible to matching via `SEARCHING_DRIVER`.
+3. **Confirming the fare is what unlocks matching.**
+   `POST /api/rides/{id}/fare/confirm` locks the fare (creates/updates
+   `FareLock` with `status = LOCKED`) and, only as a consequence, advances
+   `REQUESTED -> SEARCHING_DRIVER`. There is no other way to reach
+   `SEARCHING_DRIVER`. A driver therefore can never see, let alone accept,
+   a ride whose fare isn't currently locked - by construction, not a
+   separate runtime check bolted onto `acceptRide`.
+4. **The driver has no fare-mutating endpoint, full stop.** Every write to
+   `Fare`/`FareLock` requires `hasRole('CUSTOMER')` and an ownership check
+   against the ride. `FareIntegrationTest.driverCanSeeTheLockedFareButHasNoEndpointToChangeIt`
+   asserts exactly this: the driver can `GET` the same locked amount the
+   customer confirmed, and gets `403 ACCESS_DENIED` on the one endpoint
+   that changes it.
+5. **A destination change can't silently raise the price.**
+   `PUT /api/rides/{id}/destination` (customer only, and only before a
+   driver has been assigned) recalculates the fare and **unlocks** it
+   (`FareLock.status = UNLOCKED`, `unlockedAt` recorded) rather than
+   updating the locked amount in place. If the ride was already
+   `SEARCHING_DRIVER`, it's pulled back to `REQUESTED` - removed from
+   `GET /api/rides/open` - until the customer confirms the *new* amount
+   through the exact same locking path as before. Confirming twice without
+   a destination change in between is rejected with
+   `409 FARE_LOCKED` ("Fare is already locked").
+
+See [`FareService`](saferide-backend/src/main/java/com/saferide/fare/FareService.java),
+[`RideService`](saferide-backend/src/main/java/com/saferide/ride/RideService.java)
+(search for "Fare Lock" in its class doc), and
+[`FareIntegrationTest`](saferide-backend/src/test/java/com/saferide/fare/FareIntegrationTest.java)
+for the full mechanism and its test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -248,15 +295,15 @@ Every response uses one of two envelopes:
 }
 ```
 
-Endpoint groups not listed below (`/api/fare`, `/api/payments`,
-`/api/ratings`, `/api/complaints`, `/api/admin/{users,rides,payments,
-complaints,reports}`, ...) are introduced with the phase that implements
-them and documented live via Swagger UI once the app is running:
+Endpoint groups not listed below (`/api/payments`, `/api/ratings`,
+`/api/complaints`, `/api/admin/{users,rides,payments,complaints,reports}`,
+...) are introduced with the phase that implements them and documented
+live via Swagger UI once the app is running:
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-### Live endpoints (Phase 1–4)
+### Live endpoints (Phase 1–5)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -279,15 +326,19 @@ them and documented live via Swagger UI once the app is running:
 | PUT | `/api/admin/drivers/vehicles/{id}/approve` \| `/reject` | `ADMIN` | |
 | PUT | `/api/admin/drivers/documents/{id}/approve` \| `/reject` | `ADMIN` | |
 | POST | `/api/rides/estimate` | `CUSTOMER` | Distance/ETA preview via `MapService` - no ride created |
-| POST | `/api/rides` | `CUSTOMER` | Creates a ride (`REQUESTED` → `SEARCHING_DRIVER`); rejects a second active ride per customer (409 `ACTIVE_RIDE_EXISTS`) |
+| POST | `/api/rides` | `CUSTOMER` | Creates a ride at `REQUESTED` (not yet driver-visible - see [Fare Lock](#fare-lock--how-the-guarantee-actually-holds)); rejects a second active ride per customer (409 `ACTIVE_RIDE_EXISTS`) |
 | GET | `/api/rides` | `CUSTOMER` | Own ride history, paginated |
-| GET | `/api/rides/open` | `DRIVER` | Phase 4's naive "browse open requests" (filtered by the driver's active vehicle type) - superseded by proactive assignment in Phase 6 |
+| GET | `/api/rides/open` | `DRIVER` | Phase 4's naive "browse open requests" (filtered by the driver's active vehicle type) - only ever contains fare-locked rides |
 | GET | `/api/rides/{id}` | Customer, assigned driver, or `ADMIN` | `otp` is only included for the ride's own customer |
+| GET | `/api/rides/{id}/fare` | Customer, assigned driver, or `ADMIN` | Current breakdown + lock status; `lockStatus` is absent until first confirmed |
+| POST | `/api/rides/{id}/fare/confirm` | `CUSTOMER` | **Locks the fare** and is what actually advances `REQUESTED → SEARCHING_DRIVER`; confirming an already-locked fare → `409 FARE_LOCKED` |
+| PUT | `/api/rides/{id}/destination` | `CUSTOMER` | Recalculates distance/fare and **unlocks** the fare (never edits the locked amount in place); only before a driver is assigned; pulls a searching ride back to `REQUESTED` until re-confirmed |
 | POST | `/api/rides/{id}/accept` | `DRIVER` | Self-claim (Phase 4); requires `ONLINE` + verified driver + verified, type-matching active vehicle; `409 CONCURRENT_MODIFICATION` if another driver won the race |
 | POST | `/api/rides/{id}/arrive` | `DRIVER` (assigned) | Generates the 4-digit OTP |
 | POST | `/api/rides/{id}/start` | `DRIVER` (assigned) | `{otp}`; wrong code → `400 INVALID_OTP` |
 | POST | `/api/rides/{id}/complete` | `DRIVER` (assigned) | Auto-advances straight to `PAYMENT_PENDING` |
 | POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED`; driver → `DRIVER_CANCELLED`; blocked once `RIDE_STARTED` |
+| POST | `/api/fare/calculate` | `CUSTOMER` | Standalone preview (e.g. one call per vehicle card on the ride-options page) - computes but never persists anything |
 
 Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
 JWTs carrying `sub` (user id), `email` and `roles` claims - no DB hit per
@@ -358,6 +409,12 @@ spring-boot:run` works out of the box against `docker-compose.dev.yml`
 without any `.env` file at all — env vars only need to be set to *override*
 those defaults (required in `prod`).
 
+Fare rates (`app.fare.*` - base fare/per-km/per-minute per vehicle type,
+platform fee, currency) are **not** environment variables - they live
+directly in `application.yml` since a fare change is a pricing decision,
+not a per-environment secret. See
+[`FareProperties`](saferide-backend/src/main/java/com/saferide/fare/FareProperties.java).
+
 ## Docker
 
 - `docker-compose.dev.yml` — **today.** MySQL 8.4 + Redis 7.4 only, so the
@@ -384,11 +441,13 @@ none of them require Docker/MySQL to be running:
 - [`VehicleServiceTest`](saferide-backend/src/test/java/com/saferide/vehicle/VehicleServiceTest.java) — registering a new vehicle correctly deactivates whichever one was previously active (Mockito).
 - [`DriverVerificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/DriverVerificationIntegrationTest.java) — the full Phase 3 pipeline through real HTTP requests: driver signs up → blocked from going online while PENDING → admin lists/approves them → driver can go online → vehicle and document verified/rejected independently → admin blocks the account (login then fails) → admin unblocks (login works again) → ownership checks (can't activate another driver's vehicle) and duplicate-vehicle-number rejection.
 - [`RideStateMachineTest`](saferide-backend/src/test/java/com/saferide/ride/RideStateMachineTest.java) — every legal transition in the spec's flowchart is allowed, every illegal one (skipping a state, going backwards, cancelling a ride already in progress, acting on a terminal state) is rejected; every non-terminal status has at least one outgoing edge (32 cases via `@ParameterizedTest`).
-- [`RideIntegrationTest`](saferide-backend/src/test/java/com/saferide/ride/RideIntegrationTest.java) — full HTTP-shaped ride lifecycle: estimate → book → a driver with the wrong vehicle type never sees it in `/api/rides/open` → the right driver accepts → a second driver is too late (`409 INVALID_RIDE_STATE`) → arriving generates an OTP visible only to the customer → wrong OTP rejected → correct OTP starts the ride → completing auto-advances to `PAYMENT_PENDING` → a ride that far along can no longer be cancelled → a stranger can't view or touch the ride → a customer can't book a second active ride → customer-cancel vs. driver-cancel produce `CANCELLED` vs. `DRIVER_CANCELLED` respectively.
+- [`RideIntegrationTest`](saferide-backend/src/test/java/com/saferide/ride/RideIntegrationTest.java) — full HTTP-shaped ride lifecycle: estimate → book → confirm fare → a driver with the wrong vehicle type never sees it in `/api/rides/open` → the right driver accepts → a second driver is too late (`409 INVALID_RIDE_STATE`) → arriving generates an OTP visible only to the customer → wrong OTP rejected → correct OTP starts the ride → completing auto-advances to `PAYMENT_PENDING` → a ride that far along can no longer be cancelled → a stranger can't view or touch the ride → a customer can't book a second active ride → customer-cancel vs. driver-cancel produce `CANCELLED` vs. `DRIVER_CANCELLED` respectively.
+- [`FareCalculatorTest`](saferide-backend/src/test/java/com/saferide/fare/FareCalculatorTest.java) — matches the spec's worked example (8km/20min → ₹210) exactly, discount reduces the total by exactly its amount, a discount larger than the subtotal is clamped rather than producing a negative fare, different vehicle types produce different totals for an identical trip, and negative distance/duration/an unconfigured vehicle type are all rejected.
+- [`FareIntegrationTest`](saferide-backend/src/test/java/com/saferide/fare/FareIntegrationTest.java) — the Fare Lock guarantee end to end: a preview differs by vehicle type; a new ride's fare starts unlocked; confirming locks it (and confirming twice fails with `409 FARE_LOCKED`); a driver can view the locked amount but has no endpoint that can change it (`403` on the one write path, which is customer-only); changing the destination unlocks the fare, recalculates it, and pulls an already-searching ride back out of `/api/rides/open` until the customer re-confirms the *new* amount; a destination change is rejected outright once a driver has accepted.
 
-Domain-level tests (fare calculation, fare locking, matching, reliability
-scoring, concurrency stress) are added alongside each phase that introduces
-the behavior; Testcontainers (real MySQL in tests) arrives in Phase 14.
+Domain-level tests (matching, reliability scoring, concurrency stress) are
+added alongside each phase that introduces the behavior; Testcontainers
+(real MySQL in tests) arrives in Phase 14.
 
 ## CI/CD
 
@@ -412,8 +471,8 @@ events are in place.
 | 2 | User/Customer/Driver/Admin, JWT auth, Spring Security | ✅ Done |
 | 3 | Vehicle, driver verification, driver status | ✅ Done |
 | 4 | Ride booking, ride state machine, ride APIs | ✅ Done |
-| 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ⏳ Next |
-| 6 | Driver matching, reliability score, automatic reassignment | Planned |
+| 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | ✅ Done |
+| 6 | Driver matching, reliability score, automatic reassignment | ⏳ Next |
 | 7 | Customer frontend (login → tracking) | Planned |
 | 8 | Driver frontend (dashboard → earnings) | Planned |
 | 9 | Admin frontend | Planned |

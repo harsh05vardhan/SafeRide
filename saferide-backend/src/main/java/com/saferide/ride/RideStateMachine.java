@@ -33,6 +33,15 @@ import org.springframework.stereotype.Component;
  * is here for Phase 6's automatic reassignment to use as-is, and
  * {@code PAYMENT_COMPLETED -> RATED} for Phase 12's rating flow - so later
  * phases never need to touch this file to add a new caller.
+ *
+ * <p>{@code SEARCHING_DRIVER -> REQUESTED} was added in Phase 5: a ride
+ * only ever enters {@code SEARCHING_DRIVER} with a currently-locked fare
+ * (confirming the fare is what makes that transition happen - see
+ * {@code RideService.confirmFare}), so if a destination change unlocks the
+ * fare while a ride is already searching, the ride is pulled back to
+ * {@code REQUESTED} - invisible to drivers - until the customer confirms
+ * the new amount. This keeps "a driver can only ever see a ride with a
+ * locked fare" true by construction, not by a separate runtime check.
  */
 @Component
 public class RideStateMachine {
@@ -42,7 +51,7 @@ public class RideStateMachine {
     private static Map<RideStatus, Set<RideStatus>> buildTransitionGraph() {
         Map<RideStatus, Set<RideStatus>> graph = new EnumMap<>(RideStatus.class);
         graph.put(REQUESTED, EnumSet.of(SEARCHING_DRIVER, CANCELLED));
-        graph.put(SEARCHING_DRIVER, EnumSet.of(DRIVER_ASSIGNED, CANCELLED));
+        graph.put(SEARCHING_DRIVER, EnumSet.of(DRIVER_ASSIGNED, REQUESTED, CANCELLED));
         graph.put(DRIVER_ASSIGNED, EnumSet.of(DRIVER_ACCEPTED, SEARCHING_DRIVER, CANCELLED, DRIVER_CANCELLED));
         graph.put(DRIVER_ACCEPTED, EnumSet.of(DRIVER_ARRIVED, CANCELLED, DRIVER_CANCELLED));
         graph.put(DRIVER_ARRIVED, EnumSet.of(RIDE_STARTED, CANCELLED, DRIVER_CANCELLED));

@@ -12,9 +12,12 @@ import com.saferide.exception.InvalidOtpException;
 import com.saferide.exception.InvalidRideStateException;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.exception.UnauthorizedException;
+import com.saferide.fare.FareService;
+import com.saferide.fare.dto.RideFareResponse;
 import com.saferide.map.MapService;
 import com.saferide.map.RouteEstimate;
 import com.saferide.ride.dto.RideCreateRequest;
+import com.saferide.ride.dto.RideDestinationChangeRequest;
 import com.saferide.ride.dto.RideDriverInfo;
 import com.saferide.ride.dto.RideEstimateRequest;
 import com.saferide.ride.dto.RideEstimateResponse;
@@ -51,6 +54,16 @@ import org.springframework.transaction.annotation.Transactional;
  * {@link #listOpenRides}" model with proactive assignment; this service's
  * public contract (accept/arrive/start/complete/cancel) does not need to
  * change when that happens.
+ *
+ * <p><b>Fare Lock (Phase 5):</b> {@link #createRide} leaves a new ride at
+ * {@code REQUESTED} - not yet visible to any driver. Only
+ * {@link #confirmFare} (which locks the fare via {@code FareService})
+ * advances it to {@code SEARCHING_DRIVER}. If {@link #changeDestination}
+ * is called on a ride that's already searching, the fare is unlocked and
+ * the ride is pulled back to {@code REQUESTED} until the customer
+ * re-confirms. The result: a driver can never see, let alone accept, a
+ * ride whose fare isn't currently locked - by construction, not by a
+ * separate runtime check at accept time.
  */
 @Service
 @RequiredArgsConstructor
@@ -75,6 +88,7 @@ public class RideService {
     private final UserService userService;
     private final DriverService driverService;
     private final VehicleService vehicleService;
+    private final FareService fareService;
 
     public RideEstimateResponse estimateRoute(RideEstimateRequest request) {
         RouteEstimate estimate = mapService.estimateRoute(
@@ -108,7 +122,76 @@ public class RideService {
         ride.setEstimatedDurationMinutes(estimate.estimatedDurationMinutes());
         ride.setStatus(RideStatus.REQUESTED);
 
-        transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+        Ride savedRide = rideRepository.save(ride);
+        // Every ride gets a Fare the moment it exists, so GET .../fare always has something to
+        // show - but the ride stays REQUESTED (invisible to drivers) until confirmFare locks it.
+        fareService.createForRide(savedRide);
+
+        return toResponse(savedRide, true);
+    }
+
+    @Transactional(readOnly = true)
+    public RideFareResponse getRideFare(AuthenticatedUser principal, Long rideId) {
+        Ride ride = getRideOrThrow(rideId);
+        requireCustomerOrAssignedDriverOrAdmin(principal, ride);
+        // Both parties may view the locked amount - that's the whole point of the guarantee
+        // (the driver sees exactly what the customer confirmed); only the customer can change it.
+        return fareService.getRideFare(rideId);
+    }
+
+    /**
+     * Locks the ride's current fare and, the first time this is called for
+     * a ride, is what actually starts the search - see the class-level
+     * Fare Lock note above.
+     */
+    @Transactional
+    public RideFareResponse confirmFare(Long customerUserId, Long rideId) {
+        Ride ride = getRideOrThrow(rideId);
+        if (!ride.getCustomer().getId().equals(customerUserId)) {
+            throw new UnauthorizedException("This ride does not belong to you");
+        }
+
+        RideFareResponse response = fareService.confirmFare(rideId);
+
+        if (ride.getStatus() == RideStatus.REQUESTED) {
+            transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+            rideRepository.save(ride);
+        }
+        return response;
+    }
+
+    /**
+     * Recalculates distance/fare for a new destination and unlocks the
+     * previous amount - "do not silently increase the fare" means the
+     * customer must see and re-confirm the new number via
+     * {@link #confirmFare} before a driver can be found again.
+     */
+    @Transactional
+    public RideResponse changeDestination(Long customerUserId, Long rideId, RideDestinationChangeRequest request) {
+        Ride ride = getRideOrThrow(rideId);
+        if (!ride.getCustomer().getId().equals(customerUserId)) {
+            throw new UnauthorizedException("This ride does not belong to you");
+        }
+        if (ride.getStatus() != RideStatus.REQUESTED && ride.getStatus() != RideStatus.SEARCHING_DRIVER) {
+            throw new InvalidRideStateException("Cannot change destination once a driver has been assigned");
+        }
+
+        RouteEstimate estimate = mapService.estimateRoute(
+                ride.getPickupLatitude(), ride.getPickupLongitude(),
+                request.destinationLatitude(), request.destinationLongitude());
+
+        ride.setDestinationAddress(request.destinationAddress());
+        ride.setDestinationLatitude(request.destinationLatitude());
+        ride.setDestinationLongitude(request.destinationLongitude());
+        ride.setDistanceKm(estimate.distanceKm());
+        ride.setEstimatedDurationMinutes(estimate.estimatedDurationMinutes());
+
+        fareService.recalculateForDestinationChange(ride);
+
+        if (ride.getStatus() == RideStatus.SEARCHING_DRIVER) {
+            // Fare just got unlocked - pull the ride out of the driver-visible pool until re-confirmed.
+            transitionTo(ride, RideStatus.REQUESTED);
+        }
 
         return toResponse(rideRepository.save(ride), true);
     }
@@ -116,14 +199,7 @@ public class RideService {
     @Transactional(readOnly = true)
     public RideResponse getRide(AuthenticatedUser principal, Long rideId) {
         Ride ride = getRideOrThrow(rideId);
-        boolean isCustomer = ride.getCustomer().getId().equals(principal.userId());
-        boolean isAssignedDriver = ride.getDriver() != null
-                && ride.getDriver().getUser().getId().equals(principal.userId());
-        boolean isAdmin = principal.roles().contains("ADMIN");
-
-        if (!isCustomer && !isAssignedDriver && !isAdmin) {
-            throw new UnauthorizedException("This ride does not belong to you");
-        }
+        boolean isCustomer = requireCustomerOrAssignedDriverOrAdmin(principal, ride);
         return toResponse(ride, isCustomer);
     }
 
@@ -221,8 +297,8 @@ public class RideService {
         Ride ride = getOwnedByDriver(driverUserId, rideId);
         transitionTo(ride, RideStatus.RIDE_COMPLETED);
         ride.setCompletedAt(Instant.now());
-        // Auto-advance: the system now expects payment. Fare/Payment domains land in Phase 5/12;
-        // this transition is a pure state-machine concern and doesn't depend on either existing yet.
+        // Auto-advance: the system now expects payment. The Payment domain itself lands in
+        // Phase 12; this transition is a pure state-machine concern and doesn't depend on it.
         transitionTo(ride, RideStatus.PAYMENT_PENDING);
         return toResponse(rideRepository.save(ride), false);
     }
@@ -262,6 +338,19 @@ public class RideService {
     private Ride getRideOrThrow(Long rideId) {
         return rideRepository.findById(rideId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Ride", rideId));
+    }
+
+    /** @return whether the caller is the ride's own customer (used to decide OTP/fare-edit visibility downstream) */
+    private boolean requireCustomerOrAssignedDriverOrAdmin(AuthenticatedUser principal, Ride ride) {
+        boolean isCustomer = ride.getCustomer().getId().equals(principal.userId());
+        boolean isAssignedDriver = ride.getDriver() != null
+                && ride.getDriver().getUser().getId().equals(principal.userId());
+        boolean isAdmin = principal.roles().contains("ADMIN");
+
+        if (!isCustomer && !isAssignedDriver && !isAdmin) {
+            throw new UnauthorizedException("This ride does not belong to you");
+        }
+        return isCustomer;
     }
 
     private void transitionTo(Ride ride, RideStatus target) {

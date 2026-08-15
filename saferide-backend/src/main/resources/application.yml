@@ -45,6 +45,23 @@ app:
     secret: ${JWT_SECRET:dev-only-secret-change-me-dev-only-secret-change-me}
     access-expiration-ms: ${JWT_EXPIRATION:900000}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:604800000}
+  fare:
+    # A fare adjustment is a config change here, not a code change - see FareCalculator.
+    platform-fee: 10.0
+    currency: INR
+    vehicle-rates:
+      mini:
+        base-fare: 40.0
+        per-km-rate: 12.0
+        per-minute-rate: 1.5
+      sedan:
+        base-fare: 60.0
+        per-km-rate: 15.0
+        per-minute-rate: 2.0
+      suv:
+        base-fare: 80.0
+        per-km-rate: 20.0
+        per-minute-rate: 2.5
 
 springdoc:
   swagger-ui:

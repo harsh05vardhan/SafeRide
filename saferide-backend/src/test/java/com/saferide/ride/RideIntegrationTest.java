@@ -100,19 +100,33 @@ class RideIntegrationTest {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
+    /**
+     * Creates a ride (starts at REQUESTED - not yet driver-visible, see
+     * Phase 5's Fare Lock) and immediately confirms its fare, which is
+     * what actually moves it to SEARCHING_DRIVER. Returns the *creation*
+     * response (its "id" stays valid; its "status" field is stale
+     * REQUESTED - callers needing the current status re-fetch via GET).
+     */
     private String createRide(String customerToken, String vehicleType) throws Exception {
         String payload = """
                 {"pickupAddress":"Guwahati Railway Station","destinationAddress":"Guwahati Airport",
                  "pickupLatitude":26.1845,"pickupLongitude":91.7362,
                  "destinationLatitude":26.1061,"destinationLongitude":91.5859,"vehicleType":"%s"}
                 """.formatted(vehicleType);
-        return mockMvc.perform(post("/api/rides")
+        String createBody = mockMvc.perform(post("/api/rides")
                         .header("Authorization", "Bearer " + customerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.status").value("SEARCHING_DRIVER"))
+                .andExpect(jsonPath("$.data.status").value("REQUESTED"))
                 .andReturn().getResponse().getContentAsString();
+        long rideId = objectMapper.readTree(createBody).at("/data/id").asLong();
+
+        mockMvc.perform(post("/api/rides/" + rideId + "/fare/confirm").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lockStatus").value("LOCKED"));
+
+        return createBody;
     }
 
     @Test

@@ -2,7 +2,9 @@ package com.saferide.ride;
 
 import com.saferide.auth.AuthenticatedUser;
 import com.saferide.common.ApiResponse;
+import com.saferide.fare.dto.RideFareResponse;
 import com.saferide.ride.dto.RideCreateRequest;
+import com.saferide.ride.dto.RideDestinationChangeRequest;
 import com.saferide.ride.dto.RideEstimateRequest;
 import com.saferide.ride.dto.RideEstimateResponse;
 import com.saferide.ride.dto.RideResponse;
@@ -19,6 +21,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,7 +48,9 @@ public class RideController {
     public ApiResponse<RideResponse> create(
             @AuthenticationPrincipal AuthenticatedUser principal,
             @Valid @RequestBody RideCreateRequest request) {
-        return ApiResponse.ok("Looking for a driver", rideService.createRide(principal.userId(), request));
+        return ApiResponse.ok(
+                "Ride requested - confirm the fare to start searching for a driver",
+                rideService.createRide(principal.userId(), request));
     }
 
     @GetMapping
@@ -73,6 +78,34 @@ public class RideController {
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<RideResponse> get(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
         return ApiResponse.ok(rideService.getRide(principal, id));
+    }
+
+    @GetMapping("/{id}/fare")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<RideFareResponse> getFare(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok(rideService.getRideFare(principal, id));
+    }
+
+    /**
+     * The Fare Lock moment: locks the ride's current fare and, the first
+     * time this succeeds, is what makes the ride searchable by drivers -
+     * see {@link RideService}'s class-level "Fare Lock" note.
+     */
+    @PostMapping("/{id}/fare/confirm")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<RideFareResponse> confirmFare(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok("Fare locked", rideService.confirmFare(principal.userId(), id));
+    }
+
+    @PutMapping("/{id}/destination")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<RideResponse> changeDestination(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable Long id,
+            @Valid @RequestBody RideDestinationChangeRequest request) {
+        return ApiResponse.ok(
+                "Destination updated - please confirm the new fare",
+                rideService.changeDestination(principal.userId(), id, request));
     }
 
     @PostMapping("/{id}/accept")
