@@ -1,13 +1,16 @@
 package com.saferide.config;
 
+import com.saferide.common.VerificationStatus;
 import com.saferide.driver.Driver;
 import com.saferide.driver.DriverRepository;
 import com.saferide.driver.DriverService;
-import com.saferide.driver.DriverVerificationStatus;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserRepository;
 import com.saferide.user.UserService;
+import com.saferide.vehicle.Vehicle;
+import com.saferide.vehicle.VehicleRepository;
+import com.saferide.vehicle.VehicleType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -41,6 +44,7 @@ public class DevDataSeeder {
     private final UserService userService;
     private final DriverService driverService;
     private final DriverRepository driverRepository;
+    private final VehicleRepository vehicleRepository;
     private final PasswordEncoder passwordEncoder;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -68,11 +72,24 @@ public class DevDataSeeder {
         User user = userService.createUser("Demo Driver", "driver@example.com", "9000000002",
                 passwordEncoder.encode(DEV_PASSWORD), RoleName.DRIVER);
         Driver driver = driverService.createDriverProfile(user, "DL-DEV-0001");
-        // Skip the real admin-verification workflow (Phase 3) purely so the demo
-        // account can be used end-to-end (matching, rides, ...) without extra setup.
-        driver.setVerificationStatus(DriverVerificationStatus.VERIFIED);
+        // Skip the real admin-verification workflow purely so the demo account
+        // can be used end-to-end (going online, matching, rides, ...) without
+        // extra setup - a real signup goes through POST /api/admin/drivers/{id}/approve.
+        driver.setVerificationStatus(VerificationStatus.VERIFIED);
         driverRepository.save(driver);
-        log.info("[dev-seed] driver@example.com created (pre-verified)");
+
+        Vehicle vehicle = new Vehicle();
+        vehicle.setDriver(driver);
+        vehicle.setVehicleType(VehicleType.SEDAN);
+        vehicle.setVehicleModel("Maruti Suzuki Dzire");
+        vehicle.setVehicleNumber("AS-01-DEV-0001");
+        vehicle.setVehicleColor("White");
+        vehicle.setSeatCapacity(4);
+        vehicle.setVerificationStatus(VerificationStatus.VERIFIED);
+        vehicle.setActive(true);
+        vehicleRepository.save(vehicle);
+
+        log.info("[dev-seed] driver@example.com created (pre-verified, with a verified active vehicle)");
     }
 
     private void seedAdmin() {

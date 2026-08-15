@@ -75,6 +75,14 @@ public class UserService {
         return toProfileResponse(userRepository.save(user));
     }
 
+    /** Admin action - blocking a user immediately locks them out of login (see {@code AuthService.login}). */
+    @Transactional
+    public User updateStatus(Long userId, UserStatus status) {
+        User user = getById(userId);
+        user.setStatus(status);
+        return userRepository.save(user);
+    }
+
     private UserProfileResponse toProfileResponse(User user) {
         Set<RoleName> roleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
         return new UserProfileResponse(

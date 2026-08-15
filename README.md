@@ -6,8 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 2 of 18 complete (auth, users, drivers, JWT security). See
-> [Roadmap](#roadmap) below for what's implemented vs. planned.
+> **Status:** Phase 3 of 18 complete (vehicles, driver verification, driver
+> status). See [Roadmap](#roadmap) below for what's implemented vs. planned.
 
 ## Table of contents
 
@@ -128,8 +128,8 @@ safeRide/
 │       ├── SafeRideApplication.java
 │       ├── auth/            JWT issuance/refresh/logout, register/login, security filter
 │       ├── user/            User, Role, CustomerController, profile self-service
-│       ├── driver/          Driver profile, driver self-registration
-│       ├── vehicle/         (Phase 3)
+│       ├── driver/          Driver profile, status toggle, documents, self-registration
+│       ├── vehicle/         Vehicle entity, driver self-service registration/activation
 │       ├── ride/            (Phase 4)
 │       ├── fare/            (Phase 5)
 │       ├── matching/        (Phase 6)
@@ -138,8 +138,8 @@ safeRide/
 │       ├── safety/          (Phase 12)
 │       ├── notification/    (Phase 12)
 │       ├── complaint/       (Phase 12)
-│       ├── admin/           (Phase 9)
-│       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable
+│       ├── admin/           Driver/vehicle/document verification review (full dashboard: Phase 9)
+│       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable, AuditLog(Service)
 │       ├── config/          CorsConfig, OpenApiConfig, SecurityConfig, JwtAuthenticationEntryPoint,
 │       │                    JwtAccessDeniedHandler, JpaAuditingConfig, DevDataSeeder, ProdSafetyChecks
 │       └── exception/       ApiException + GlobalExceptionHandler (extended per-phase with new exceptions)
@@ -177,13 +177,19 @@ Every package/folder above already exists in the repo (most with a
 
 Full entity list, columns and constraints are specified in the project brief
 this README accompanies; they land in the codebase starting Phase 2 (`USER`,
-`ROLE`) and Phase 4 (`RIDE`, `FARE`, `FARE_LOCK`, ...). Summary of the core
-relationships:
+`ROLE`), Phase 3 (`VEHICLE`, `DRIVER_DOCUMENT`, `AUDIT_LOG`) and Phase 4
+(`RIDE`, `FARE`, `FARE_LOCK`, ...). Summary of the core relationships:
 
 - One `USER` has at most one `DRIVER` profile (1:0..1) and can place many
   `RIDE`s as a customer.
-- One `DRIVER` has one or more `VEHICLE`s and exactly one
+- One `DRIVER` has **one or more** `VEHICLE`s (added in Phase 3 as a proper
+  1:N - a driver can register more than one and switch which is `active`,
+  but only the active one is ever visible to matching) and, eventually, one
   `DRIVER_RELIABILITY` record.
+- `VerificationStatus` (`PENDING`/`VERIFIED`/`REJECTED`) is one shared enum
+  used by `DRIVER`, `VEHICLE` and `DRIVER_DOCUMENT` alike - an admin reviews
+  the person, each vehicle, and each document as independent decisions, not
+  one combined flag.
 - One `RIDE` has exactly one `FARE`, at most one `FARE_LOCK`, at most one
   `PAYMENT`, at most one `RATING`, and zero or more `COMPLAINT`s.
 - `RIDE_LOCATION` (high-frequency GPS points) is **not** written to MySQL —
@@ -192,12 +198,17 @@ relationships:
   `completedAt`, `cancelledAt`).
 - `RIDE.version` is an `@Version` optimistic-lock column — it's what stops
   two drivers from accepting the same ride under concurrent requests.
+- `AUDIT_LOG` deliberately holds plain `userId`/`rideId` longs rather than
+  foreign-key relations, so the trail keeps meaning what it said at the time
+  even if the referenced row later changes.
 
-Foreign keys, unique constraints (e.g. one `RATING` per ride) and indexes
-(e.g. `ride.status`, `ride.customer_id`, `ride.driver_id`,
-`driver.online_status`) are added alongside the entities that need them so
-each migration is reviewable against real query patterns instead of being
-guessed upfront.
+Foreign keys, unique constraints (e.g. one `RATING` per ride, one active
+vehicle enforced at the service layer since "at most one" isn't expressible
+as a plain column constraint) and indexes (e.g. `ride.status`,
+`ride.customer_id`, `ride.driver_id`, `driver.online_status`,
+`driver.verification_status`, `vehicle.verification_status`) are added
+alongside the entities that need them so each migration is reviewable
+against real query patterns instead of being guessed upfront.
 
 ## API contract
 
@@ -217,14 +228,14 @@ Every response uses one of two envelopes:
 ```
 
 Endpoint groups not listed below (`/api/rides`, `/api/fare`, `/api/payments`,
-`/api/ratings`, `/api/complaints`, `/api/admin`, ...) are introduced with the
-phase that implements them and documented live via Swagger UI once the app
-is running:
+`/api/ratings`, `/api/complaints`, `/api/admin/{users,rides,payments,
+complaints,reports}`, ...) are introduced with the phase that implements
+them and documented live via Swagger UI once the app is running:
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-### Live endpoints (Phase 1 + 2)
+### Live endpoints (Phase 1–3)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -236,6 +247,15 @@ is running:
 | GET / PUT | `/api/customers/profile` | `CUSTOMER` | Always operates on the caller's own account |
 | POST | `/api/drivers/register` | Any authenticated user | Adds the DRIVER role + driver profile to the current account; re-login/refresh needed to pick up the new role |
 | GET | `/api/drivers/profile` | `DRIVER` | |
+| PUT | `/api/drivers/status` | `DRIVER` | `{onlineStatus: ONLINE\|OFFLINE}`; going `ONLINE` requires an admin-verified driver |
+| POST / GET | `/api/drivers/documents` | `DRIVER` | Submit/list documents for review (`documentUrl` references external storage - no upload endpoint yet) |
+| POST / GET | `/api/vehicles` | `DRIVER` | Register a vehicle (auto-becomes the active one) / list own vehicles |
+| PUT | `/api/vehicles/{id}/activate` | `DRIVER` | Switch which owned vehicle is active |
+| GET | `/api/admin/drivers` | `ADMIN` | `?status=PENDING\|VERIFIED\|REJECTED&page=&size=` |
+| GET | `/api/admin/drivers/{id}` | `ADMIN` | Driver + vehicles + documents in one call |
+| PUT | `/api/admin/drivers/{id}/approve` \| `/block` \| `/unblock` | `ADMIN` | `/block` also forces the driver offline |
+| PUT | `/api/admin/drivers/vehicles/{id}/approve` \| `/reject` | `ADMIN` | |
+| PUT | `/api/admin/drivers/documents/{id}/approve` \| `/reject` | `ADMIN` | |
 
 Access tokens are short-lived (15 min default, `JWT_EXPIRATION`) self-contained
 JWTs carrying `sub` (user id), `email` and `roles` claims - no DB hit per
@@ -246,7 +266,9 @@ revocable server-side (what makes logout actually work). See
 for the full flow.
 
 **Dev-only seed accounts** (see [Seed data](#seed--demo-credentials-phase-2)
-below) let you log in immediately without registering.
+below) let you log in immediately without registering - the seeded driver
+is pre-verified with a pre-verified active vehicle, so it's ready to go
+online immediately.
 
 ## Local setup
 
@@ -327,6 +349,8 @@ none of them require Docker/MySQL to be running:
 - [`JwtServiceTest`](saferide-backend/src/test/java/com/saferide/auth/JwtServiceTest.java) — token round-trip, expiry, tamper rejection.
 - [`AuthServiceTest`](saferide-backend/src/test/java/com/saferide/auth/AuthServiceTest.java) — register/login/refresh-rotation/logout business logic (Mockito).
 - [`AuthIntegrationTest`](saferide-backend/src/test/java/com/saferide/auth/AuthIntegrationTest.java) — full HTTP-shaped flow: register → login → call a protected endpoint → cross-role 403 → refresh rotation → logout revocation → validation errors, all through real MockMvc requests (no `@WithMockUser` shortcuts).
+- [`VehicleServiceTest`](saferide-backend/src/test/java/com/saferide/vehicle/VehicleServiceTest.java) — registering a new vehicle correctly deactivates whichever one was previously active (Mockito).
+- [`DriverVerificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/DriverVerificationIntegrationTest.java) — the full Phase 3 pipeline through real HTTP requests: driver signs up → blocked from going online while PENDING → admin lists/approves them → driver can go online → vehicle and document verified/rejected independently → admin blocks the account (login then fails) → admin unblocks (login works again) → ownership checks (can't activate another driver's vehicle) and duplicate-vehicle-number rejection.
 
 Domain-level tests (fare calculation, fare locking, matching, reliability
 scoring, OTP, concurrency) are added alongside each phase that introduces
@@ -352,8 +376,8 @@ events are in place.
 |---|---|---|
 | 1 | Project setup — Spring Boot, React, MySQL, Git, basic structure | ✅ Done |
 | 2 | User/Customer/Driver/Admin, JWT auth, Spring Security | ✅ Done |
-| 3 | Vehicle, driver verification, driver status | ⏳ Next |
-| 4 | Ride booking, ride state machine, ride APIs | Planned |
+| 3 | Vehicle, driver verification, driver status | ✅ Done |
+| 4 | Ride booking, ride state machine, ride APIs | ⏳ Next |
 | 5 | Fare engine, fare breakdown, **Fare Lock**, destination changes | Planned |
 | 6 | Driver matching, reliability score, automatic reassignment | Planned |
 | 7 | Customer frontend (login → tracking) | Planned |
@@ -371,7 +395,7 @@ events are in place.
 
 ---
 
-### Seed / demo credentials (Phase 2)
+### Seed / demo credentials (Phase 2–3)
 
 Seeded automatically on startup under the `dev` profile only (never `test`
 or `prod`) by
@@ -381,8 +405,8 @@ log in with these immediately, no registration needed:
 | Email | Password | Role | Notes |
 |---|---|---|---|
 | `customer@example.com` | `Password123!` | CUSTOMER | |
-| `driver@example.com` | `Password123!` | DRIVER | Pre-verified, so it can be used end-to-end without the Phase 3 admin-verification step |
-| `admin@example.com` | `Password123!` | ADMIN | |
+| `driver@example.com` | `Password123!` | DRIVER | Pre-verified, with a pre-verified active vehicle (2020 Maruti Suzuki Dzire) - ready to go `ONLINE` immediately, skipping the admin-verification step below |
+| `admin@example.com` | `Password123!` | ADMIN | Use this to review other drivers via `GET/PUT /api/admin/drivers/**` |
 
 These are intentionally public, dev-only credentials — never reachable in
 `prod` (`ProdSafetyChecks` also refuses to boot the `prod` profile if

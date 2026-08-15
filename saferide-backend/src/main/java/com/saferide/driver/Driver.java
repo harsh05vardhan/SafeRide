@@ -1,6 +1,7 @@
 package com.saferide.driver;
 
 import com.saferide.common.Auditable;
+import com.saferide.common.VerificationStatus;
 import com.saferide.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,10 +22,13 @@ import lombok.Setter;
 
 /**
  * A driver's operational profile: one row per {@link User} with the
- * DRIVER role. Vehicle assignment and document verification are added in
- * Phase 3; live location is Redis-backed starting Phase 11 -
- * {@code currentLatitude}/{@code currentLongitude} here are the
- * last-known fallback, not the hot path.
+ * DRIVER role. {@code verificationStatus} covers the driver as a person
+ * (license reviewed by an admin) - see {@link com.saferide.vehicle.Vehicle}
+ * and {@link DriverDocument} for the per-vehicle and per-document
+ * verification that ride matching (Phase 6) will also require before a
+ * driver can actually accept rides. Live location is Redis-backed
+ * starting Phase 11 - {@code currentLatitude}/{@code currentLongitude}
+ * here are the last-known fallback, not the hot path.
  */
 @Entity
 @Table(
@@ -52,7 +56,7 @@ public class Driver extends Auditable {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false, length = 20)
-    private DriverVerificationStatus verificationStatus = DriverVerificationStatus.PENDING;
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "online_status", nullable = false, length = 10)
@@ -80,6 +84,6 @@ public class Driver extends Auditable {
     private Double reliabilityScore = 70.0;
 
     public boolean isVerified() {
-        return verificationStatus == DriverVerificationStatus.VERIFIED;
+        return verificationStatus == VerificationStatus.VERIFIED;
     }
 }

@@ -1,6 +1,8 @@
 package com.saferide.driver;
 
+import com.saferide.common.VerificationStatus;
 import com.saferide.driver.dto.DriverProfileResponse;
+import com.saferide.exception.DriverNotVerifiedException;
 import com.saferide.exception.DuplicateResourceException;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.user.RoleName;
@@ -30,7 +32,7 @@ public class DriverService {
         Driver driver = new Driver();
         driver.setUser(user);
         driver.setLicenseNumber(licenseNumber);
-        driver.setVerificationStatus(DriverVerificationStatus.PENDING);
+        driver.setVerificationStatus(VerificationStatus.PENDING);
         driver.setOnlineStatus(DriverOnlineStatus.OFFLINE);
         return driverRepository.save(driver);
     }
@@ -46,15 +48,39 @@ public class DriverService {
 
     @Transactional(readOnly = true)
     public DriverProfileResponse getProfileByUserId(Long userId) {
-        // readOnly transaction keeps the Hibernate session open through toProfileResponse(),
-        // which needs it: Driver -> User is LAZY and open-in-view is disabled.
-        Driver driver = driverRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No driver profile found for this account. Call POST /api/drivers/register first."));
-        return toProfileResponse(driver);
+        return toProfileResponse(getDriverByUserId(userId));
     }
 
-    private DriverProfileResponse toProfileResponse(Driver driver) {
+    /**
+     * {@code PUT /api/drivers/status}. Going ONLINE requires the driver to
+     * already be admin-verified - an unverified driver has no business
+     * being visible to matching. Going OFFLINE is always allowed (a driver
+     * must always be able to step away).
+     */
+    @Transactional
+    public DriverProfileResponse updateOnlineStatus(Long userId, DriverOnlineStatus requested) {
+        Driver driver = getDriverByUserId(userId);
+        if (requested == DriverOnlineStatus.ONLINE && driver.getVerificationStatus() != VerificationStatus.VERIFIED) {
+            throw new DriverNotVerifiedException(
+                    "Your driver profile must be verified by an admin before you can go online");
+        }
+        driver.setOnlineStatus(requested);
+        return toProfileResponse(driverRepository.save(driver));
+    }
+
+    /** Public: other domains (vehicle, admin, later matching) resolve a driver's own record through this too. */
+    public Driver getDriverByUserId(Long userId) {
+        return driverRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No driver profile found for this account. Call POST /api/drivers/register first."));
+    }
+
+    public Driver getDriverById(Long driverId) {
+        return driverRepository.findById(driverId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Driver", driverId));
+    }
+
+    DriverProfileResponse toProfileResponse(Driver driver) {
         return new DriverProfileResponse(
                 driver.getId(),
                 UserSummaryDTO.from(driver.getUser()),
