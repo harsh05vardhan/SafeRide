@@ -152,8 +152,8 @@ export default function DriverDashboardPage() {
           >
             <span
               className={cn(
-                "absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
-                isOnline ? "translate-x-7" : "translate-x-1",
+                "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                isOnline ? "translate-x-6" : "translate-x-0",
               )}
             />
           </button>
