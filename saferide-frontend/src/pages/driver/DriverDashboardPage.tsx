@@ -17,7 +17,9 @@ import { cn } from "@/lib/utils";
 
 export default function DriverDashboardPage() {
   const { data: profile, isPending: profilePending } = useDriverProfile();
-  const { data: vehicles } = useQuery({ queryKey: ["vehicles"], queryFn: () => vehicleService.list() });
+  // Same staleness reasoning as useDriverProfile - a vehicle admins verify while this page is
+  // already open needs to show up here without a manual reload.
+  const { data: vehicles } = useQuery({ queryKey: ["vehicles"], queryFn: () => vehicleService.list(), refetchInterval: 15000 });
   const { currentRide } = useCurrentDriverRide();
   const { showToast } = useToast();
   const queryClient = useQueryClient();

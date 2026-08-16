@@ -64,8 +64,11 @@ export default function DriverProfilePage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { data: profile, isPending: profilePending } = useDriverProfile();
-  const { data: vehicles, isPending: vehiclesPending } = useQuery({ queryKey: ["vehicles"], queryFn: () => vehicleService.list() });
-  const { data: documents, isPending: documentsPending } = useQuery({ queryKey: ["driver-documents"], queryFn: () => driverService.listDocuments() });
+  // Polled, not just fetched once - an admin verifying/rejecting a vehicle or document while
+  // this page is already open should show up here without a manual reload (refetchOnWindowFocus
+  // is off app-wide - see App.tsx).
+  const { data: vehicles, isPending: vehiclesPending } = useQuery({ queryKey: ["vehicles"], queryFn: () => vehicleService.list(), refetchInterval: 15000 });
+  const { data: documents, isPending: documentsPending } = useQuery({ queryKey: ["driver-documents"], queryFn: () => driverService.listDocuments(), refetchInterval: 15000 });
 
   const [showVehicleForm, setShowVehicleForm] = useState(false);
   const [showDocForm, setShowDocForm] = useState(false);
