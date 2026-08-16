@@ -5,8 +5,11 @@
 #
 # The full containerized stack (backend + frontend images, health checks,
 # single `docker compose up --build` for everything) arrives in Phase 15 as
-# docker-compose.yml. Redis is included here ahead of its Phase 11 usage
-# purely as dev infra convenience - the backend does not talk to it yet.
+# docker-compose.yml. Since Phase 11, the backend actually talks to Redis
+# here - the driver geo-index and login rate limiter both fail open if it's
+# not running (see RedisDriverGeoIndex/RedisLoginRateLimiter), so the app
+# still starts without it, just with proactive matching finding nobody and
+# unlimited login attempts until it's back.
 services:
   mysql:
     image: mysql:8.4

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +38,7 @@ class AuthServiceTest {
     @Mock private UserService userService;
     @Mock private DriverService driverService;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private LoginRateLimiter loginRateLimiter;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private JwtService jwtService;
@@ -54,7 +54,7 @@ class AuthServiceTest {
 
         authService = new AuthService(
                 userRepository, userService, driverService, refreshTokenRepository,
-                passwordEncoder, jwtService, jwtProperties);
+                passwordEncoder, jwtService, jwtProperties, loginRateLimiter);
     }
 
     private User activeUser(String password) {
@@ -115,6 +115,8 @@ class AuthServiceTest {
 
         assertThat(response.user().email()).isEqualTo("test@example.com");
         assertThat(response.tokenType()).isEqualTo("Bearer");
+        // A successful login clears whatever failure count the identifier had built up.
+        verify(loginRateLimiter).recordSuccess("test@example.com");
     }
 
     @Test
@@ -124,6 +126,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("test@example.com", "WrongPassword!")))
                 .isInstanceOf(InvalidCredentialsException.class);
+        verify(loginRateLimiter).recordFailure("test@example.com");
     }
 
     @Test
@@ -132,6 +135,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("ghost@example.com", "whatever")))
                 .isInstanceOf(InvalidCredentialsException.class);
+        verify(loginRateLimiter).recordFailure("ghost@example.com");
     }
 
     @Test
@@ -142,6 +146,20 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("test@example.com", "CorrectHorse1!")))
                 .isInstanceOf(UnauthorizedException.class);
+        // Not counted as a rate-limited failure - see AuthService.login's class doc on why.
+        verify(loginRateLimiter, org.mockito.Mockito.never()).recordFailure(anyString());
+    }
+
+    @Test
+    void loginChecksTheRateLimiterBeforeTouchingCredentialsAtAll() {
+        org.mockito.Mockito.doThrow(new com.saferide.exception.TooManyAttemptsException("slow down"))
+                .when(loginRateLimiter).checkAllowed("test@example.com");
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("test@example.com", "whatever")))
+                .isInstanceOf(com.saferide.exception.TooManyAttemptsException.class);
+
+        // Never even looked the account up once rate-limited.
+        verify(userRepository, org.mockito.Mockito.never()).findByEmailOrPhone(anyString());
     }
 
     @Test

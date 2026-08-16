@@ -41,10 +41,13 @@ import lombok.Setter;
  * (Phase 12).
  *
  * <p>{@code currentLatitude}/{@code currentLongitude} are written by
- * {@code PUT /api/drivers/location} (Phase 6) and are MySQL's
- * source-of-truth copy - Redis becomes the high-frequency hot path for
- * these starting Phase 11, without changing where the authoritative value
- * lives.
+ * {@code PUT /api/drivers/location} (Phase 6) and remain MySQL's
+ * source-of-truth copy. Since Phase 11, {@code DriverService} additionally
+ * mirrors an ONLINE driver's position into
+ * {@link com.saferide.matching.DriverGeoIndex} (Redis by default) - a hot,
+ * ephemeral, purely derived copy that matching actually queries; MySQL
+ * stays authoritative and is what a Redis flush/restart would be rebuilt
+ * from, not the other way around.
  */
 @Entity
 @Table(

@@ -17,6 +17,12 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
 
     Page<Driver> findByVerificationStatus(VerificationStatus status, Pageable pageable);
 
-    /** Matching's candidate pool - narrowed further (vehicle, distance, exclusions, busy check) in {@code DriverMatchingService}. */
-    List<Driver> findByOnlineStatusAndVerificationStatus(DriverOnlineStatus onlineStatus, VerificationStatus verificationStatus);
+    /**
+     * {@link com.saferide.matching.SqlDriverGeoIndex}'s candidate pool - not additionally
+     * filtered by verification here, because a driver can only ever reach
+     * {@code DriverOnlineStatus.ONLINE} in the first place via {@code DriverService.updateOnlineStatus},
+     * which already refuses to let an unverified driver go online. Narrowed further (vehicle,
+     * distance, exclusions, busy check) in {@code DriverMatchingService}.
+     */
+    List<Driver> findByOnlineStatus(DriverOnlineStatus onlineStatus);
 }

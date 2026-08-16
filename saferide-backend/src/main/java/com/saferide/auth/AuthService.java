@@ -44,6 +44,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final LoginRateLimiter loginRateLimiter;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -61,18 +62,34 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    /**
+     * {@code loginRateLimiter} is checked before anything else - once an
+     * identifier has failed too many times recently, this short-circuits
+     * with {@code 429 TOO_MANY_ATTEMPTS} before spending a DB lookup or a
+     * bcrypt comparison on it. A blocked account fails immediately for an
+     * unrelated reason and isn't counted as a rate-limited failure - the
+     * limiter exists to slow down password guessing, not to double-punish
+     * an account an admin already blocked.
+     */
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        loginRateLimiter.checkAllowed(request.identifier());
+
         User user = userRepository.findByEmailOrPhone(request.identifier())
-                .orElseThrow(InvalidCredentialsException::new);
+                .orElseGet(() -> {
+                    loginRateLimiter.recordFailure(request.identifier());
+                    throw new InvalidCredentialsException();
+                });
 
         if (user.getStatus() == UserStatus.BLOCKED) {
             throw new UnauthorizedException("This account has been blocked. Contact support.");
         }
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            loginRateLimiter.recordFailure(request.identifier());
             throw new InvalidCredentialsException();
         }
 
+        loginRateLimiter.recordSuccess(request.identifier());
         return issueTokens(user);
     }
 

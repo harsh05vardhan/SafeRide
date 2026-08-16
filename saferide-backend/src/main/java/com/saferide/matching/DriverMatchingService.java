@@ -2,7 +2,6 @@ package com.saferide.matching;
 
 import com.saferide.common.VerificationStatus;
 import com.saferide.driver.Driver;
-import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.map.GeoUtils;
 import com.saferide.ride.ActiveRideStatuses;
@@ -26,12 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
  * moment a ride's fare is locked (and again after a decline or a driver
  * cancellation) instead of waiting for a driver to self-claim.
  *
- * <p>Candidate retrieval here is a plain MySQL query over online+verified
- * drivers, filtered and scored in application code. That's the
- * intentional Phase-11 replacement point: once driver locations move
- * into Redis, this method's <em>signature</em> (a ride in, a best driver
- * out) doesn't change, only how it finds candidates - a geo query instead
- * of a full table scan.
+ * <p><b>Phase 11:</b> candidate retrieval is now {@link DriverGeoIndex}, a
+ * proper geo query (Redis by default) instead of a full table scan - this
+ * method's own signature (a ride in, a best driver out) never changed, only
+ * how it finds candidates, exactly as planned back in Phase 6. Everything
+ * after that - exclusions, busy check, vehicle/verification eligibility,
+ * scoring - is unchanged and stays here regardless of which
+ * {@code DriverGeoIndex} is active, since neither implementation knows
+ * anything about vehicles, exclusions, or ride state.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,14 +44,19 @@ public class DriverMatchingService {
     private final RideDriverExclusionRepository exclusionRepository;
     private final DriverMatchScorer matchScorer;
     private final MatchingProperties matchingProperties;
+    private final DriverGeoIndex geoIndex;
 
     @Transactional(readOnly = true)
     public Optional<Driver> findBestDriver(Ride ride) {
-        Set<Long> excludedDriverIds = Set.copyOf(exclusionRepository.findDriverIdsByRideId(ride.getId()));
-        List<Driver> onlineVerifiedDrivers =
-                driverRepository.findByOnlineStatusAndVerificationStatus(DriverOnlineStatus.ONLINE, VerificationStatus.VERIFIED);
+        List<Long> nearbyDriverIds = geoIndex.findWithinRadius(
+                ride.getPickupLatitude(), ride.getPickupLongitude(), matchingProperties.getMaxRadiusKm());
+        if (nearbyDriverIds.isEmpty()) {
+            return Optional.empty();
+        }
 
-        return onlineVerifiedDrivers.stream()
+        Set<Long> excludedDriverIds = Set.copyOf(exclusionRepository.findDriverIdsByRideId(ride.getId()));
+
+        return driverRepository.findAllById(nearbyDriverIds).stream()
                 .filter(driver -> !excludedDriverIds.contains(driver.getId()))
                 .filter(driver -> !isBusy(driver))
                 .map(driver -> scoreIfEligible(driver, ride))
@@ -104,6 +110,9 @@ public class DriverMatchingService {
         double distanceKm = GeoUtils.haversineDistanceKm(
                 driver.getCurrentLatitude(), driver.getCurrentLongitude(),
                 ride.getPickupLatitude(), ride.getPickupLongitude());
+        // geoIndex.findWithinRadius already guarantees this - kept as a cheap defensive
+        // re-check rather than trusted blindly, so a bug in either DriverGeoIndex
+        // implementation can't silently over-include a too-far candidate.
         if (distanceKm > matchingProperties.getMaxRadiusKm()) {
             return Optional.empty();
         }

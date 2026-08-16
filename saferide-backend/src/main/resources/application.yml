@@ -27,6 +27,13 @@ spring:
     default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Lettuce connects lazily - the app still boots fine if Redis is briefly unreachable;
+      # only whatever request actually needs it (matching, login rate limiting) fails, not startup.
+      timeout: 2000ms
 
 server:
   port: ${SERVER_PORT:8080}
@@ -75,6 +82,17 @@ app:
     max-radius-km: 5.0
     max-eta-minutes: 15.0
     average-speed-kmh: 25.0
+    # "redis" (default): DriverMatchingService gets candidates from a Redis geo-index -
+    # see RedisDriverGeoIndex. "sql": falls back to the pre-Phase-11 full table scan
+    # (SqlDriverGeoIndex) - what runs under the test profile, where Redis isn't available yet
+    # (Testcontainers arrives Phase 14), and a legitimate no-Redis deployment option otherwise.
+    geo-index-source: ${MATCHING_GEO_INDEX_SOURCE:redis}
+  security:
+    login-rate-limit:
+      # Same redis/in-memory choice as matching's geo-index-source, same reason.
+      source: ${LOGIN_RATE_LIMIT_SOURCE:redis}
+      max-attempts: 10
+      window-minutes: 15
   reliability:
     # Weights for ReliabilityCalculator - sum of the four positive weights is the
     # maximum possible score (100) before any cancellation/complaint penalty.

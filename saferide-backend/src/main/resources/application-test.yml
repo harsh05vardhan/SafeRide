@@ -12,6 +12,16 @@ spring:
       ddl-auto: create-drop
     show-sql: false
 
+app:
+  matching:
+    # No real Redis in tests - see the base application.yml's comment on geo-index-source.
+    # SqlDriverGeoIndex replicates the pre-Phase-11 full-scan-then-filter behavior exactly,
+    # so MatchingIntegrationTest exercises this without needing Redis at all.
+    geo-index-source: sql
+  security:
+    login-rate-limit:
+      source: in-memory
+
 logging:
   level:
     root: WARN

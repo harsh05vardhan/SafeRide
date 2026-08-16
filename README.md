@@ -6,9 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 10 of 18 complete (WebSocket/STOMP — real-time ride
-> status and driver location). See [Roadmap](#roadmap) below for what's
-> implemented vs. planned.
+> **Status:** Phase 11 of 18 complete (Redis — driver geo-matching, login
+> rate limiting). See [Roadmap](#roadmap) below for what's implemented vs.
+> planned.
 
 ## Table of contents
 
@@ -21,6 +21,7 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Driver frontend](#driver-frontend)
 - [Admin frontend](#admin-frontend)
 - [Real-time (WebSocket)](#real-time-websocket)
+- [Redis (driver geo-matching, rate limiting)](#redis-driver-geo-matching-rate-limiting)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -108,11 +109,12 @@ Cross-cutting design decisions baked in from Phase 1:
 
 **Backend:** Java 21, Spring Boot 3, Spring Web, Spring Data JPA/Hibernate,
 Spring Security + JWT (Phase 2), Spring WebSocket/STOMP (Phase 10), Spring
-Actuator, Maven, Lombok, springdoc-openapi/Swagger, JUnit 5, Mockito,
-Testcontainers (Phase 14).
+Data Redis (Phase 11), Spring Actuator, Maven, Lombok, springdoc-openapi/
+Swagger, JUnit 5, Mockito, Testcontainers (Phase 14).
 
-**Database:** MySQL 8 (source of truth) + Redis (hot/ephemeral data — driver
-geolocation, availability, matching cache, rate limiting).
+**Database:** MySQL 8 (source of truth) + Redis 7 (hot/ephemeral data —
+driver geo-index for matching, login rate limiting; see
+[Redis](#redis-driver-geo-matching-rate-limiting) below).
 
 **Messaging:** Apache Kafka (Phase 13, optional/additive — domain events like
 `RideRequested`, `DriverAssigned`, `PaymentCompleted`).
@@ -132,7 +134,8 @@ safeRide/
 ├── saferide-backend/
 │   └── src/main/java/com/saferide/
 │       ├── SafeRideApplication.java
-│       ├── auth/            JWT issuance/refresh/logout, register/login, security filter
+│       ├── auth/            JWT issuance/refresh/logout, register/login, security filter,
+│       │                    LoginRateLimiter (Redis/in-memory, Phase 11)
 │       ├── user/            User, Role, CustomerController, profile self-service
 │       ├── driver/          Driver profile, status/location, documents, self-registration,
 │       │                    ReliabilityCalculator + DriverReliabilityService
@@ -143,7 +146,8 @@ safeRide/
 │       ├── map/             MapService abstraction + GeoUtils - MockMapService today, Google/Mapbox later
 │       ├── fare/            FareCalculator, Fare + FareLock, the Fare Lock guarantee itself
 │       ├── matching/        DriverMatchScorer, DriverMatchingService, RideDriverExclusion -
-│       │                    proactive assignment + automatic reassignment
+│       │                    proactive assignment + automatic reassignment; DriverGeoIndex
+│       │                    (Redis/SQL, Phase 11) - matching's candidate lookup
 │       ├── payment/         (Phase 12)
 │       ├── rating/          (Phase 12)
 │       ├── safety/          (Phase 12)
@@ -367,16 +371,21 @@ the primary path:
    stay at their seeded defaults until ratings (Phase 12) and complaints
    (Phase 12) actually exist to feed them.
 6. **If nobody qualifies, the ride waits - it doesn't fail.** No eligible
-   driver (none online, none with a reported location, none with a
-   verified matching vehicle within `maxRadiusKm`) just leaves the ride at
-   `SEARCHING_DRIVER`, discoverable via the `/api/rides/open` fallback the
-   moment a suitable driver comes online.
+   driver (none within `maxRadiusKm`, none with a verified matching
+   vehicle) just leaves the ride at `SEARCHING_DRIVER`, discoverable via
+   the `/api/rides/open` fallback the moment a suitable driver comes
+   online - a fallback that never touches Redis at all, so it works even
+   if Redis is down (see [Redis](#redis-driver-geo-matching-rate-limiting)).
 
-Driver location (`PUT /api/drivers/location`) writes straight to MySQL -
-the architecture's stated source of truth - via plain candidate queries in
-`DriverMatchingService`; that's the deliberate Phase-11 replacement point,
-where the *same method signature* starts querying Redis's geo-index
-instead of scanning the `drivers` table.
+Candidate retrieval itself is `DriverGeoIndex` (Phase 11) - Redis by
+default, a real geo-index instead of the full-table-scan-then-filter this
+did through Phase 6-10 - but `DriverMatchingService.findBestDriver`'s own
+signature (a ride in, a best driver out) never changed; only how it finds
+candidates did, exactly as planned when this section was first written.
+Everything above - exclusions, the busy check, vehicle/verification
+eligibility, scoring - stays in `DriverMatchingService` regardless of
+which `DriverGeoIndex` is active, since neither implementation knows
+anything about rides, vehicles, or exclusions.
 
 See [`DriverMatchingService`](saferide-backend/src/main/java/com/saferide/matching/DriverMatchingService.java),
 [`DriverMatchScorer`](saferide-backend/src/main/java/com/saferide/matching/DriverMatchScorer.java),
@@ -636,6 +645,107 @@ receiving a live status event, a driver receiving a private assignment
 notification, and a location broadcast) for the full mechanism and its
 test coverage.
 
+## Redis (driver geo-matching, rate limiting)
+
+Two independent uses, chosen per feature via a config property rather than
+a global "is Redis on" switch - see each one's dedicated section below for
+why that matters:
+
+| Feature | Property | Default | Test profile |
+|---|---|---|---|
+| Matching candidate lookup | `app.matching.geo-index-source` | `redis` | `sql` |
+| Login rate limiting | `app.security.login-rate-limit.source` | `redis` | `in-memory` |
+
+### Driver geo-index
+
+`DriverMatchingService`'s candidate lookup (see
+[Matching](#matching-reliability-and-automatic-reassignment) above) used
+to be a full scan of every online driver, filtered and Haversine-distance-
+checked in Java - correct, but O(all online drivers) regardless of how far
+away most of them are. `DriverGeoIndex` replaces just that one lookup with
+a real geospatial query:
+
+- **`RedisDriverGeoIndex`** (default) - one Redis key holding a
+  `GEOADD`/`GEOSEARCH`/`ZREM` sorted set of every online driver's position.
+  `findWithinRadius` is a single `GEOSEARCH ... BYRADIUS` call, O(nearby
+  drivers) instead of O(all of them).
+- **`SqlDriverGeoIndex`** - the original full-scan-then-filter logic,
+  extracted rather than deleted. Active when
+  `app.matching.geo-index-source=sql` (the test profile's default, since
+  Testcontainers-backed Redis in tests arrives Phase 14) and a legitimate
+  small-scale, no-Redis deployment choice otherwise - not a test stub, a
+  complete second implementation, exactly `MockMapService`'s relationship
+  to a real map provider.
+
+Both sit behind the same interface, so `DriverMatchingService` (exclusions,
+the busy check, vehicle/verification eligibility, scoring) never changes
+regardless of which is active - see
+[Matching](#matching-reliability-and-automatic-reassignment) for what
+happens after candidates come back.
+
+**MySQL stays the source of truth.** `Driver.currentLatitude`/
+`currentLongitude` are still what `PUT /api/drivers/location` writes
+first; `DriverService` only *mirrors* an ONLINE driver's position into
+whichever `DriverGeoIndex` is active afterward, and removes them from it
+the moment they go OFFLINE (an offline driver must never be a matching
+candidate, in MySQL's business rules or Redis's index alike). If Redis is
+flushed or restarted, the index is empty until drivers next report a
+location or toggle online - not a data-loss risk, since nothing
+authoritative ever lived there.
+
+**Every Redis call fails open, never fails the request.** If Redis is
+briefly unreachable, `RedisDriverGeoIndex` catches, logs a warning, and
+degrades: a location/online-status write still succeeds against MySQL, and
+`findWithinRadius` returns no candidates rather than throwing - which just
+means a ride waits at `SEARCHING_DRIVER`, still reachable through the
+`GET /api/rides/open` fallback (which never touches Redis at all). A cache
+being down should never be able to take an unrelated MySQL write down with
+it.
+
+### Login rate limiting
+
+`LoginRateLimiter` slows down repeated password guessing against one
+account - deliberately keyed by login identifier (email/phone), not caller
+IP. That's a specific, deliberate choice: the threat this defends against
+is many guesses aimed at *one* known account, which an IP-based limiter
+alone wouldn't catch from a distributed attacker, and an identifier-based
+one does regardless of where the requests originate. (IP-based limiting,
+for the different threat of one attacker spraying many accounts, is a
+deliberate non-goal here, not an oversight.)
+
+`AuthService.login` checks `loginRateLimiter.checkAllowed(identifier)`
+before touching the database or computing a bcrypt hash at all; a blocked
+account fails for its own, unrelated reason and isn't counted as a
+rate-limited failure, so the limiter never double-punishes an account an
+admin already blocked. `app.security.login-rate-limit.max-attempts` (10)
+and `.window-minutes` (15) are shared config, regardless of which
+implementation is enforcing them:
+
+- **`RedisLoginRateLimiter`** (default) - one Redis string counter per
+  identifier, `INCR`-ed on every failure with `EXPIRE` set only on the
+  first increment of a fresh window (so the window is "N minutes since the
+  first recent failure," not extended by every subsequent one). Shared
+  across every backend instance.
+- **`InMemoryLoginRateLimiter`** - the same enforcement logic against a
+  per-instance `ConcurrentHashMap` instead. Active when
+  `app.security.login-rate-limit.source=in-memory` (the test profile), and
+  a real, complete implementation in its own right, not a mock.
+
+**Also fails open.** A rate limiter that itself becomes a way to lock every
+user out of login the moment its backing store hiccups would trade a minor
+security control for a major availability one - `RedisLoginRateLimiter`
+catches, logs, and lets the login attempt proceed unrated-limited rather
+than blocking it.
+
+See [`DriverGeoIndex`](saferide-backend/src/main/java/com/saferide/matching/DriverGeoIndex.java),
+[`RedisDriverGeoIndex`](saferide-backend/src/main/java/com/saferide/matching/RedisDriverGeoIndex.java) /
+[`SqlDriverGeoIndex`](saferide-backend/src/main/java/com/saferide/matching/SqlDriverGeoIndex.java),
+[`LoginRateLimiter`](saferide-backend/src/main/java/com/saferide/auth/LoginRateLimiter.java),
+and the `RedisDriverGeoIndexTest` / `SqlDriverGeoIndexTest` /
+`RedisLoginRateLimiterTest` / `InMemoryLoginRateLimiterTest` /
+`AuthIntegrationTest#repeatedFailedLoginsAreRateLimitedPerIdentifier` tests
+for the full mechanism and its test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -667,7 +777,7 @@ live via Swagger UI once the app is running:
 |---|---|---|---|
 | GET | `/api/ping` | Public | Liveness check |
 | POST | `/api/auth/register` | Public | `role: CUSTOMER \| DRIVER`; `licenseNumber` required when `role=DRIVER` |
-| POST | `/api/auth/login` | Public | `identifier` accepts email or phone |
+| POST | `/api/auth/login` | Public | `identifier` accepts email or phone; rate-limited per identifier (Phase 11) → `429 TOO_MANY_ATTEMPTS` after repeated failures |
 | POST | `/api/auth/refresh` | Public | Rotates the refresh token; the old one is revoked |
 | POST | `/api/auth/logout` | Public | Revokes the given refresh token (idempotent) |
 | GET / PUT | `/api/customers/profile` | `CUSTOMER` | Always operates on the caller's own account |
@@ -812,7 +922,10 @@ mvn test
 ```
 
 All tests run against an in-memory H2 database (`application-test.yml`), so
-none of them require Docker/MySQL to be running:
+none of them require Docker/MySQL/Redis to be running - the test profile
+switches `DriverGeoIndex`/`LoginRateLimiter` to their SQL/in-memory
+implementations (see [Redis](#redis-driver-geo-matching-rate-limiting))
+rather than needing a real Redis:
 
 - [`SafeRideApplicationTests`](saferide-backend/src/test/java/com/saferide/SafeRideApplicationTests.java) — Spring context smoke test.
 - [`JwtServiceTest`](saferide-backend/src/test/java/com/saferide/auth/JwtServiceTest.java) — token round-trip, expiry, tamper rejection.
@@ -828,6 +941,11 @@ none of them require Docker/MySQL to be running:
 - [`ReliabilityCalculatorTest`](saferide-backend/src/test/java/com/saferide/driver/ReliabilityCalculatorTest.java) — a perfect driver scores exactly 100, the worst possible driver scores exactly 0 (never negative), cancellation rate reduces the score proportionally to its configured weight, and the complaint penalty is capped rather than unbounded.
 - [`MatchingIntegrationTest`](saferide-backend/src/test/java/com/saferide/matching/MatchingIntegrationTest.java) — the full Phase 6 pipeline through real HTTP requests: confirming a fare proactively assigns the best of several otherwise-identical drivers; a driver not assigned can't accept; the assigned driver declines and is permanently excluded while matching immediately reassigns to the next-best driver; the decliner can never claw the ride back through *either* `/api/rides/{id}/accept` or the `/api/rides/open` fallback; declining/cancelling measurably move `acceptanceRate`/`cancellationRate`; a post-acceptance cancellation auto-reassigns to a third driver instead of dead-ending; and a ride with zero eligible drivers waits at `SEARCHING_DRIVER` until one comes online and self-claims it.
 - [`RideWebSocketIntegrationTest`](saferide-backend/src/test/java/com/saferide/websocket/RideWebSocketIntegrationTest.java) — a real WebSocket connection end to end (`StandardWebSocketClient` + `WebSocketStompClient` against a random-port `@SpringBootTest`, not MockMvc, which can't exercise an upgraded connection): connecting without a valid token is rejected; a customer subscribed to their own ride's status topic receives a live event the instant a real REST call (the driver accepting) transitions it; a stranger's subscription to someone else's ride topic is rejected outright; a driver receives a private `/user/queue/assignments` notification the moment matching proactively assigns them a ride; and a `PUT /api/drivers/location` call broadcasts to the ride's own location topic with the exact coordinates sent.
+- [`SqlDriverGeoIndexTest`](saferide-backend/src/test/java/com/saferide/matching/SqlDriverGeoIndexTest.java) — the SQL fallback returns only within-radius online drivers, nearest first, skips anyone with no reported location, and its `indexLocation`/`removeDriver` are confirmed no-ops (MySQL already is the index).
+- [`RedisDriverGeoIndexTest`](saferide-backend/src/test/java/com/saferide/matching/RedisDriverGeoIndexTest.java) — verifies the actual Redis command shape against a mocked `GeoOperations` (`GEOADD` with the right `(longitude, latitude)` point, `GEOSEARCH` results mapped back to driver ids, `ZREM` on removal), plus that a simulated Redis failure on any of the three methods degrades (empty results / silent no-op) rather than throwing.
+- [`InMemoryLoginRateLimiterTest`](saferide-backend/src/test/java/com/saferide/auth/InMemoryLoginRateLimiterTest.java) — a real behavioral test (not a mock) of the enforcement logic itself: allowed up to the limit, blocked at it, a success clears the counter entirely, and identifiers are tracked independently.
+- [`RedisLoginRateLimiterTest`](saferide-backend/src/test/java/com/saferide/auth/RedisLoginRateLimiterTest.java) — verifies the Redis command shape (`INCR`, `EXPIRE` set only on the first increment of a window, `DELETE` on success) and that a simulated Redis failure fails open on every method.
+- `AuthServiceTest`/`AuthIntegrationTest` gained rate-limiter coverage: a blocked account's failure isn't counted, the limiter is checked before the database is even touched, and (integration) ten real failed logins against one identifier are followed by an eleventh - correct password included - coming back `429 TOO_MANY_ATTEMPTS`, while a different identifier stays unaffected.
 
 Testcontainers (real MySQL in tests, replacing today's H2 profile for the
 integration suite) arrives in Phase 14.
@@ -868,8 +986,8 @@ events are in place.
 | 8 | Driver frontend (dashboard → earnings) | ✅ Done |
 | 9 | Admin frontend (driver verification console) | ✅ Done |
 | 10 | WebSocket/STOMP — real-time status & location | ✅ Done |
-| 11 | Redis — driver locations, matching, caching | ⏳ Next |
-| 12 | Payment, rating, complaints, safety | Planned |
+| 11 | Redis — driver geo-matching, login rate limiting | ✅ Done |
+| 12 | Payment, rating, complaints, safety | ⏳ Next |
 | 13 | Kafka events, notifications, analytics | Planned |
 | 14 | Testing — JUnit, Mockito, Testcontainers | Planned |
 | 15 | Docker / Docker Compose (full stack) | Planned |

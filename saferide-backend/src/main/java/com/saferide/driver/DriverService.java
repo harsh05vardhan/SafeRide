@@ -5,6 +5,7 @@ import com.saferide.driver.dto.DriverProfileResponse;
 import com.saferide.exception.DriverNotVerifiedException;
 import com.saferide.exception.DuplicateResourceException;
 import com.saferide.exception.ResourceNotFoundException;
+import com.saferide.matching.DriverGeoIndex;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserService;
@@ -19,6 +20,7 @@ public class DriverService {
 
     private final DriverRepository driverRepository;
     private final UserService userService;
+    private final DriverGeoIndex geoIndex;
 
     /** Used by {@code AuthService} during signup when {@code role == DRIVER}. */
     @Transactional
@@ -54,8 +56,19 @@ public class DriverService {
     /**
      * {@code PUT /api/drivers/status}. Going ONLINE requires the driver to
      * already be admin-verified - an unverified driver has no business
-     * being visible to matching. Going OFFLINE is always allowed (a driver
-     * must always be able to step away).
+     * being visible to matching - and, if they already have a last-known
+     * position from a previous session, indexes it in {@link DriverGeoIndex}
+     * immediately rather than waiting for their next location report,
+     * mirroring what the frontend already does the moment "online" is
+     * tapped. Going OFFLINE is always allowed (a driver must always be
+     * able to step away) and removes them from the index - an offline
+     * driver must never be a matching candidate, in MySQL or Redis alike.
+     *
+     * <p>This is also, deliberately, the <em>only</em> place a driver's
+     * {@code onlineStatus} becomes {@code ONLINE} - {@link DriverGeoIndex}
+     * implementations that scan by online status (see
+     * {@code SqlDriverGeoIndex}) rely on that to skip re-checking
+     * verification themselves.
      */
     @Transactional
     public DriverProfileResponse updateOnlineStatus(Long userId, DriverOnlineStatus requested) {
@@ -65,20 +78,38 @@ public class DriverService {
                     "Your driver profile must be verified by an admin before you can go online");
         }
         driver.setOnlineStatus(requested);
-        return toProfileResponse(driverRepository.save(driver));
+        DriverProfileResponse response = toProfileResponse(driverRepository.save(driver));
+
+        if (requested == DriverOnlineStatus.ONLINE) {
+            if (driver.getCurrentLatitude() != null && driver.getCurrentLongitude() != null) {
+                geoIndex.indexLocation(driver.getId(), driver.getCurrentLatitude(), driver.getCurrentLongitude());
+            }
+        } else {
+            geoIndex.removeDriver(driver.getId());
+        }
+        return response;
     }
 
     /**
-     * {@code PUT /api/drivers/location}. Source-of-truth write to MySQL -
-     * see the class-level note on {@link Driver} about where Redis fits
-     * in starting Phase 11.
+     * {@code PUT /api/drivers/location}. Always writes MySQL first - the
+     * architecture's stated source of truth - then, only while the driver
+     * is ONLINE, mirrors the position into {@link DriverGeoIndex} so
+     * matching's candidate search sees it immediately. A location reported
+     * while OFFLINE (e.g. a stale request racing a status change) is saved
+     * but deliberately never indexed - an offline driver must not become a
+     * matching candidate just because their browser sent one more update.
      */
     @Transactional
     public DriverProfileResponse updateLocation(Long userId, double latitude, double longitude) {
         Driver driver = getDriverByUserId(userId);
         driver.setCurrentLatitude(latitude);
         driver.setCurrentLongitude(longitude);
-        return toProfileResponse(driverRepository.save(driver));
+        DriverProfileResponse response = toProfileResponse(driverRepository.save(driver));
+
+        if (driver.getOnlineStatus() == DriverOnlineStatus.ONLINE) {
+            geoIndex.indexLocation(driver.getId(), latitude, longitude);
+        }
+        return response;
     }
 
     /** Public: other domains (vehicle, admin, later matching) resolve a driver's own record through this too. */

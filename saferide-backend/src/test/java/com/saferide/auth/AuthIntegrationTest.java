@@ -34,6 +34,9 @@ class AuthIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LoginRateLimitProperties loginRateLimitProperties;
+
     private String registerAndGetBody(String name, String email, String phone, String role, String license) throws Exception {
         String payload = """
                 {
@@ -117,6 +120,41 @@ class AuthIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void repeatedFailedLoginsAreRateLimitedPerIdentifier() throws Exception {
+        registerAndGetBody("Jill Customer", "jill@example.com", "9111100011", "CUSTOMER", null);
+
+        String wrongPasswordPayload = """
+                {"identifier":"jill@example.com","password":"WrongPassword!"}
+                """;
+        for (int i = 0; i < loginRateLimitProperties.getMaxAttempts(); i++) {
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(wrongPasswordPayload))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+        }
+
+        // One more, even with the CORRECT password now, is rejected before credentials are even checked.
+        String correctPasswordPayload = """
+                {"identifier":"jill@example.com","password":"Password123!"}
+                """;
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(correctPasswordPayload))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("TOO_MANY_ATTEMPTS"));
+
+        // A different identifier is a completely independent counter.
+        registerAndGetBody("Kim Customer", "kim@example.com", "9111100012", "CUSTOMER", null);
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"identifier":"kim@example.com","password":"Password123!"}
+                                """))
+                .andExpect(status().isOk());
     }
 
     @Test

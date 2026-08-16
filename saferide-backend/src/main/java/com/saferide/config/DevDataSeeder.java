@@ -5,6 +5,7 @@ import com.saferide.driver.Driver;
 import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.driver.DriverService;
+import com.saferide.matching.DriverGeoIndex;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserRepository;
@@ -47,6 +48,7 @@ public class DevDataSeeder {
     private final DriverRepository driverRepository;
     private final VehicleRepository vehicleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DriverGeoIndex geoIndex;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(2) // after RoleInitializer (@Order(1)) so the roles this depends on already exist
@@ -83,6 +85,10 @@ public class DevDataSeeder {
         driver.setCurrentLongitude(91.7362);
         driver.setOnlineStatus(DriverOnlineStatus.ONLINE);
         driverRepository.save(driver);
+        // Bypasses DriverService (this seeder writes the entity directly), so mirror the same
+        // Redis sync it would have done - best-effort; RedisDriverGeoIndex fails open if Redis
+        // isn't up yet, and a real PUT /api/drivers/location call would fix it regardless.
+        geoIndex.indexLocation(driver.getId(), driver.getCurrentLatitude(), driver.getCurrentLongitude());
 
         Vehicle vehicle = new Vehicle();
         vehicle.setDriver(driver);
