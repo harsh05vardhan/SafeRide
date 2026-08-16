@@ -6,10 +6,10 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 14 of 18 complete (Testcontainers - real MySQL + Redis
-> in every backend integration test - plus Vitest/React Testing Library on
-> the frontend). See [Roadmap](#roadmap) below for what's implemented vs.
-> planned.
+> **Status:** Phase 15 of 18 complete (the full stack containerized - one
+> `docker compose up --build` for MySQL, Redis, backend, and frontend, plus
+> an optional real Kafka broker). See [Roadmap](#roadmap) below for what's
+> implemented vs. planned.
 
 ## Table of contents
 
@@ -148,6 +148,9 @@ registry.
 ```
 safeRide/
 ├── saferide-backend/
+│   ├── Dockerfile             (Phase 15) multi-stage - maven:3.9-eclipse-temurin-21 to build,
+│   │                          eclipse-temurin:21-jre-alpine to run, non-root, /actuator/health check
+│   ├── .dockerignore
 │   └── src/main/java/com/saferide/
 │       ├── SafeRideApplication.java
 │       ├── auth/            JWT issuance/refresh/logout, register/login, security filter,
@@ -197,6 +200,10 @@ safeRide/
 │       └── testsupport/      (Phase 14) AbstractIntegrationTest - the shared singleton
 │                              MySQL + Redis Testcontainers every @SpringBootTest class extends
 ├── saferide-frontend/
+│   ├── Dockerfile             (Phase 15) multi-stage - node:20-alpine to build (VITE_API_BASE_URL/
+│   │                          VITE_WS_BASE_URL baked in as build args), nginx:1.27-alpine to serve
+│   ├── nginx.conf             (Phase 15) SPA fallback routing + long-cache immutable assets/
+│   ├── .dockerignore
 │   └── src/
 │       ├── assets/
 │       ├── components/
@@ -251,7 +258,8 @@ safeRide/
 │       ├── App.tsx
 │       └── main.tsx
 ├── docker-compose.dev.yml     local MySQL + Redis for native `mvn`/`npm` dev
-├── docker-compose.yml         full stack (Phase 15)
+├── docker-compose.yml         (Phase 15) full containerized stack - mysql, redis, backend,
+│                              frontend, optionally kafka (`--profile kafka`)
 ├── .github/workflows/         ci.yml / cd.yml (Phase 16)
 ├── .env.example
 └── README.md
@@ -1212,12 +1220,58 @@ this phase adds.
 
 ## Docker
 
-- `docker-compose.dev.yml` — **today.** MySQL 8.4 + Redis 7.4 only, so the
-  backend and frontend can run natively for fast iteration
-  (`mvn spring-boot:run`, `npm run dev`).
-- `docker-compose.yml` — **Phase 15.** The full containerized stack
-  (`mysql`, `redis`, `backend`, `frontend`, optionally `kafka`), started
-  with a single `docker compose up --build`.
+Two separate compose files for two separate jobs - each documents its own
+reasoning in its own header comment, not repeated here:
+
+- `docker-compose.dev.yml` — MySQL 8.4 + Redis 7.4 only, so the backend and
+  frontend can run natively for fast iteration (`mvn spring-boot:run`,
+  `npm run dev`). Still the right choice for day-to-day development.
+- `docker-compose.yml` (Phase 15) — the full containerized stack, one
+  command:
+
+  ```bash
+  docker compose up --build
+  ```
+
+  Brings up `mysql` → `redis` → `backend` (waits on both being
+  *healthy*, not just started) → `frontend` (waits on the backend being
+  healthy) in dependency order automatically, via each service's
+  `healthcheck` + `depends_on: condition: service_healthy`. Once it's up:
+
+  - Frontend: http://localhost:5173
+  - Backend: http://localhost:8080 (Swagger at `/swagger-ui.html`)
+
+  Both images are multi-stage builds
+  ([`saferide-backend/Dockerfile`](saferide-backend/Dockerfile),
+  [`saferide-frontend/Dockerfile`](saferide-frontend/Dockerfile)) - the
+  final backend image has a JRE and the built jar, never Maven or the
+  source tree; the final frontend image is nginx serving the static Vite
+  build (with SPA fallback routing - see
+  [`nginx.conf`](saferide-frontend/nginx.conf)), never Node. Both run as
+  non-root. `VITE_API_BASE_URL`/`VITE_WS_BASE_URL` are baked into the
+  frontend bundle at *build* time (Vite's own constraint - `import.meta.env`
+  values don't exist at container runtime), so they default to the
+  browser-reachable address the backend's port is published at
+  (`localhost:8080`), not the internal `backend:8080` service name only
+  other containers can resolve.
+
+  **Kafka is genuinely optional here too** (same "optional/additive"
+  design as everywhere else - see
+  [Domain events, notifications, and analytics](#domain-events-notifications-and-analytics)):
+  a separate opt-in Compose profile, a real single-node KRaft broker (no
+  Zookeeper needed), left out of the default `docker compose up` so the
+  common path stays fast and lean.
+
+  ```bash
+  docker compose --profile kafka up --build
+  ```
+
+  `KAFKA_FORWARDING_ENABLED=true` still needs setting explicitly (`.env`
+  or the shell environment) even with the profile running - verified for
+  real: with the profile up and forwarding flipped on, booking a ride
+  through the containerized backend and reading
+  `saferide.domain-events` back with the broker's own console consumer
+  shows the exact `RideRequestedEvent` payload.
 
 ## Testing
 
@@ -1327,8 +1381,8 @@ publishes to.
 | 12 | Payment, rating, complaints, safety | ✅ Done |
 | 13 | Kafka events, notifications, analytics | ✅ Done |
 | 14 | Testing — JUnit, Mockito, Testcontainers | ✅ Done |
-| 15 | Docker / Docker Compose (full stack) | ⏳ Next |
-| 16 | GitHub Actions CI/CD | Planned |
+| 15 | Docker / Docker Compose (full stack) | ✅ Done |
+| 16 | GitHub Actions CI/CD | ⏳ Next |
 | 17 | Deployment (free-tier MVP → AWS) | Planned |
 | 18 | Production optimization | Planned |
 

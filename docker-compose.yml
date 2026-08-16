@@ -1,0 +1,119 @@
+# Full containerized stack (Phase 15) - one command, everything:
+#
+#   docker compose up --build
+#
+# ...then http://localhost:5173 (frontend) and http://localhost:8080 (backend). Local native
+# dev (mvn spring-boot:run / npm run dev) still uses docker-compose.dev.yml (MySQL + Redis
+# only) for faster iteration - that file's own header comment explains why the two aren't
+# merged into one.
+#
+# Kafka is genuinely optional here too, same as everywhere else in the app (see the README's
+# "Domain events, notifications, and analytics" section) - it's a separate opt-in profile:
+#
+#   docker compose --profile kafka up --build
+#
+# ...and KAFKA_FORWARDING_ENABLED=true needs setting (in .env or the shell environment) for the
+# backend to actually try sending to it; the app runs identically either way; only the
+# additive Kafka mirror is affected.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: saferide-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-saferide}
+      MYSQL_USER: ${DB_USERNAME:-saferide}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-saferide}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-saferide_root}
+    volumes:
+      - saferide-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-saferide_root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: saferide-redis
+    restart: unless-stopped
+    volumes:
+      - saferide-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./saferide-backend
+    container_name: saferide-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-saferide}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: ${DB_USERNAME:-saferide}
+      DB_PASSWORD: ${DB_PASSWORD:-saferide}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-dev-only-secret-change-me}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # The container name IS the DNS name on this network - "kafka", reachable whether or not
+      # the kafka profile is actually running. Fine either way: KafkaEventForwarder fails open
+      # on an unreachable broker, and forwarding is off by default regardless (see below).
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_FORWARDING_ENABLED: ${KAFKA_FORWARDING_ENABLED:-false}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+
+  frontend:
+    build:
+      context: ./saferide-frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-ws://localhost:8080/ws}
+    container_name: saferide-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+  # Opt-in only - `docker compose --profile kafka up --build`. Single-node KRaft (no
+  # Zookeeper needed). See the file header comment above for why forwarding also needs
+  # KAFKA_FORWARDING_ENABLED=true set explicitly even when this profile is running.
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: saferide-kafka
+    profiles: ["kafka"]
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:19092,CONTROLLER://:19093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:19093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
+
+volumes:
+  saferide-mysql-data:
+  saferide-redis-data:
