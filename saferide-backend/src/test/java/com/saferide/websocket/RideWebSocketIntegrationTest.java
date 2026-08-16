@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saferide.ride.dto.DriverLocationEvent;
 import com.saferide.ride.dto.RideAssignmentEvent;
 import com.saferide.ride.dto.RideStatusEvent;
+import com.saferide.testsupport.AbstractIntegrationTest;
 import com.saferide.user.RoleName;
 import com.saferide.user.UserService;
 import java.lang.reflect.Type;
@@ -31,7 +32,6 @@ import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
@@ -46,8 +46,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class RideWebSocketIntegrationTest {
+class RideWebSocketIntegrationTest extends AbstractIntegrationTest {
 
     @LocalServerPort private int port;
     @Autowired private MockMvc mockMvc;

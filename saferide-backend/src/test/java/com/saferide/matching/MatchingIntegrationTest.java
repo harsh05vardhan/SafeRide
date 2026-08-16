@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saferide.testsupport.AbstractIntegrationTest;
 import com.saferide.user.RoleName;
 import com.saferide.user.UserService;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -28,12 +28,14 @@ import org.springframework.test.web.servlet.MockMvc;
  * the {@code /api/rides/open} fallback, acceptance/decline/cancellation
  * all move the driver's reliability numbers, and a driver cancellation
  * after accepting auto-reassigns to a third driver rather than leaving
- * the ride dead.
+ * the ride dead. Candidate lookup runs against a real Redis geo-index
+ * (Phase 14, via {@link AbstractIntegrationTest}) - {@code RedisDriverGeoIndex}
+ * itself, not the SQL fallback ({@code SqlDriverGeoIndexTest} covers that
+ * one directly).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class MatchingIntegrationTest {
+class MatchingIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;

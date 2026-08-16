@@ -31,19 +31,35 @@ import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * The one test in the suite that needs a real Kafka broker - a genuine
- * in-JVM one via {@code @EmbeddedKafka}, same reasoning H2 replaces MySQL
- * elsewhere: no Docker required. Everything else in Phase 13
- * ({@code NotificationIntegrationTest}) deliberately runs with
- * {@code app.events.kafka-forwarding-enabled=false} (the test profile's
- * default) to prove in-app notifications need no Kafka at all; this class
- * re-enables forwarding for itself and checks the one thing that does:
- * a committed domain event actually lands on the topic.
+ * in-JVM one via {@code @EmbeddedKafka} (no Docker needed for the broker
+ * itself). Everything else in Phase 13 ({@code NotificationIntegrationTest})
+ * deliberately runs with {@code app.events.kafka-forwarding-enabled=false}
+ * (the test profile's default) to prove in-app notifications need no Kafka
+ * at all; this class re-enables forwarding for itself and checks the one
+ * thing that does: a committed domain event actually lands on the topic.
+ *
+ * <p>Its own dedicated {@link MySQLContainer} (per-class lifecycle via
+ * {@code @Testcontainers}/{@code @Container}, not the shared singleton
+ * {@code AbstractIntegrationTest} gives every other integration test) -
+ * this class already needs its own one-off Spring context (different
+ * Kafka properties, {@code @DirtiesContext}), so a small dedicated
+ * container is simpler and more robust than fighting
+ * {@code @DynamicPropertySource} override ordering between a shared base
+ * class and one test's need for an isolated schema. With {@code ddl-auto:
+ * create-drop}, {@code @DirtiesContext} closing this context drops its
+ * schema - fine here since nothing else uses this container.
  *
  * <p>Events here are published for a real, previously persisted user
  * rather than a made-up id - {@link com.saferide.notification.NotificationEventListener}
@@ -55,20 +71,26 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Testcontainers
 @EmbeddedKafka(partitions = 1, topics = "saferide.domain-events", bootstrapServersProperty = "spring.kafka.bootstrap-servers")
-@TestPropertySource(properties = {
-        "app.events.kafka-forwarding-enabled=true",
-        // A DIFFERENT named H2 database than the one every other test class shares
-        // (jdbc:h2:mem:saferide_test). This class needs its own Spring context anyway
-        // (different Kafka properties), and @DirtiesContext below closes that context at
-        // the end - with ddl-auto: create-drop, closing a context DROPS its schema. Left
-        // pointed at the shared database name, that drop would wipe out the tables every
-        // other test class's cached context still depends on, since DB_CLOSE_DELAY=-1
-        // keeps one named in-memory instance alive and shared across all of them.
-        "spring.datasource.url=jdbc:h2:mem:saferide_test_kafka;MODE=MySQL;DB_CLOSE_DELAY=-1"
-})
+@TestPropertySource(properties = "app.events.kafka-forwarding-enabled=true")
 @DirtiesContext
 class KafkaEventForwarderTest {
+
+    @Container
+    private static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
+            .withDatabaseName("saferide_test_kafka")
+            .withUrlParam("useSSL", "false")
+            .withUrlParam("allowPublicKeyRetrieval", "true")
+            .withUrlParam("serverTimezone", "UTC");
+
+    @DynamicPropertySource
+    static void datasourceProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        registry.add("spring.datasource.username", MYSQL::getUsername);
+        registry.add("spring.datasource.password", MYSQL::getPassword);
+        registry.add("spring.datasource.driver-class-name", MYSQL::getDriverClassName);
+    }
 
     @Autowired private ApplicationEventPublisher domainEvents;
     @Autowired private PlatformTransactionManager transactionManager;

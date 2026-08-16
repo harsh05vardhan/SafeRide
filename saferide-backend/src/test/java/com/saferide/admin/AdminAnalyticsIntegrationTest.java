@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saferide.testsupport.AbstractIntegrationTest;
 import com.saferide.user.RoleName;
 import com.saferide.user.UserService;
 import org.junit.jupiter.api.Test;
@@ -16,21 +17,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * {@code GET /api/admin/analytics/summary} against the same shared H2
- * instance every other integration test class in the suite runs against
- * (see the class-level convention documented throughout this package) - so
+ * {@code GET /api/admin/analytics/summary} against the same shared
+ * MySQL/Redis Testcontainers instance every other integration test class
+ * in the suite runs against (see {@link AbstractIntegrationTest}) - so
  * this can only assert the real counts moved by <em>at least</em> what this
  * test itself contributed, never an exact total. Exact arithmetic is
  * {@link AdminAnalyticsServiceTest}'s job, with fully controlled mocks.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class AdminAnalyticsIntegrationTest {
+class AdminAnalyticsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;

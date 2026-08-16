@@ -1,30 +1,22 @@
-# Used for fast Spring context / unit tests only (activated by @ActiveProfiles("test")).
-# Real MySQL/Redis integration paths are exercised via Testcontainers starting Phase 14 -
-# this profile intentionally trades fidelity for speed in pure unit-level tests.
+# Activated by @ActiveProfiles("test") on every test class. Real MySQL + real Redis (Phase 14,
+# via Testcontainers) - not H2/SQL-fallback/in-memory stand-ins. spring.datasource.*,
+# spring.data.redis.*, app.matching.geo-index-source and app.security.login-rate-limit.source are
+# deliberately absent here: every @SpringBootTest either extends
+# com.saferide.testsupport.AbstractIntegrationTest (the shared singleton MySQL+Redis containers) or,
+# for the one test that needs its own isolated schema/Kafka broker, supplies its own
+# @DynamicPropertySource - see KafkaEventForwarderTest. Running `mvn test` therefore requires Docker
+# to be running.
 spring:
-  datasource:
-    url: jdbc:h2:mem:saferide_test;MODE=MySQL;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
   jpa:
     hibernate:
       ddl-auto: create-drop
     show-sql: false
 
 app:
-  matching:
-    # No real Redis in tests - see the base application.yml's comment on geo-index-source.
-    # SqlDriverGeoIndex replicates the pre-Phase-11 full-scan-then-filter behavior exactly,
-    # so MatchingIntegrationTest exercises this without needing Redis at all.
-    geo-index-source: sql
-  security:
-    login-rate-limit:
-      source: in-memory
   events:
-    # No real Kafka broker in the fast H2-backed suite - KafkaEventForwarderTest re-enables this
-    # for itself against a real @EmbeddedKafka broker. In-app notifications are unaffected either
-    # way (NotificationEventListener needs no Kafka - see application.yml's comment).
+    # No real Kafka broker in the main suite - KafkaEventForwarderTest re-enables this for itself
+    # against a real @EmbeddedKafka broker. In-app notifications are unaffected either way
+    # (NotificationEventListener needs no Kafka - see application.yml's comment).
     kafka-forwarding-enabled: false
 
 logging:

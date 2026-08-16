@@ -6,9 +6,10 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 13 of 18 complete (domain events, notifications, Kafka
-> forwarding, and admin analytics). See [Roadmap](#roadmap) below for what's
-> implemented vs. planned.
+> **Status:** Phase 14 of 18 complete (Testcontainers - real MySQL + Redis
+> in every backend integration test - plus Vitest/React Testing Library on
+> the frontend). See [Roadmap](#roadmap) below for what's implemented vs.
+> planned.
 
 ## Table of contents
 
@@ -119,7 +120,8 @@ Cross-cutting design decisions baked in from Phase 1:
 Spring Security + JWT (Phase 2), Spring WebSocket/STOMP (Phase 10), Spring
 Data Redis (Phase 11), Spring Kafka (Phase 13, optional/additive), Spring
 Actuator, Maven, Lombok, springdoc-openapi/Swagger, JUnit 5, Mockito,
-Testcontainers (Phase 14).
+Testcontainers (Phase 14 — real MySQL + Redis in every integration test,
+see [Testing](#testing)).
 
 **Database:** MySQL 8 (source of truth) + Redis 7 (hot/ephemeral data —
 driver geo-index for matching, login rate limiting; see
@@ -133,9 +135,10 @@ app itself never depends on Kafka being reachable - see
 [Domain events, notifications, and analytics](#domain-events-notifications-and-analytics)).
 
 **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui (Radix +
-CVA), React Router, Axios, TanStack Query, React Hook Form + Zod, Lucide
-icons, Framer Motion, React Leaflet + OpenStreetMap, `@stomp/stompjs`
-(Phase 10 — plain STOMP over native `WebSocket`, no SockJS).
+CVA), React Router, Axios, TanStack Query, Recharts, React Hook Form + Zod,
+Lucide icons, Framer Motion, React Leaflet + OpenStreetMap, `@stomp/stompjs`
+(Phase 10 — plain STOMP over native `WebSocket`, no SockJS), Vitest +
+React Testing Library (Phase 14, see [Testing](#testing)).
 
 **DevOps:** Docker, Docker Compose, GitHub Actions (CI + CD), container
 registry.
@@ -188,6 +191,11 @@ safeRide/
 │       ├── application-dev.yml
 │       ├── application-test.yml
 │       └── application-prod.yml
+│   └── src/test/java/com/saferide/
+│       │  (mirrors the main tree above, package by package - *Test for Mockito/plain unit
+│       │   tests, *IntegrationTest for real HTTP via MockMvc)
+│       └── testsupport/      (Phase 14) AbstractIntegrationTest - the shared singleton
+│                              MySQL + Redis Testcontainers every @SpringBootTest class extends
 ├── saferide-frontend/
 │   └── src/
 │       ├── assets/
@@ -237,6 +245,9 @@ safeRide/
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
+│       ├── testSetup.ts      (Phase 14) jest-dom matchers for Vitest - see vite.config.ts's
+│       │                     `test` block; `*.test.ts(x)` files sit next to what they cover
+│       │                     (e.g. components/common/Badge.test.tsx), not in a parallel tree
 │       ├── App.tsx
 │       └── main.tsx
 ├── docker-compose.dev.yml     local MySQL + Redis for native `mvn`/`npm` dev
@@ -751,11 +762,13 @@ a real geospatial query:
   drivers) instead of O(all of them).
 - **`SqlDriverGeoIndex`** - the original full-scan-then-filter logic,
   extracted rather than deleted. Active when
-  `app.matching.geo-index-source=sql` (the test profile's default, since
-  Testcontainers-backed Redis in tests arrives Phase 14) and a legitimate
-  small-scale, no-Redis deployment choice otherwise - not a test stub, a
+  `app.matching.geo-index-source=sql` - a legitimate small-scale,
+  no-Redis deployment choice, and what `SqlDriverGeoIndexTest` exercises
+  directly (no Spring context needed for that one) - not a test stub, a
   complete second implementation, exactly `MockMapService`'s relationship
-  to a real map provider.
+  to a real map provider. The main integration suite runs against real
+  Redis instead (Phase 14, via Testcontainers - see
+  [Testing](#testing)).
 
 Both sit behind the same interface, so `DriverMatchingService` (exclusions,
 the busy check, vehicle/verification eligibility, scoring) never changes
@@ -1127,7 +1140,10 @@ online immediately.
 ## Local setup
 
 Prerequisites: **Java 21+** (JDK 24 with `--release 21` also works), **Maven
-3.9+**, **Node 20+**, **Docker Desktop** (for local MySQL/Redis).
+3.9+**, **Node 20+**, **Docker Desktop** (for local MySQL/Redis, and for
+`mvn test` - see [Testing](#testing), Phase 14 runs backend integration
+tests against real Testcontainers-managed MySQL/Redis rather than an
+in-memory stand-in).
 
 ### 1. Start local infrastructure (MySQL + Redis)
 
@@ -1210,11 +1226,27 @@ cd saferide-backend
 mvn test
 ```
 
-All tests run against an in-memory H2 database (`application-test.yml`), so
-none of them require Docker/MySQL/Redis to be running - the test profile
-switches `DriverGeoIndex`/`LoginRateLimiter` to their SQL/in-memory
-implementations (see [Redis](#redis-driver-geo-matching-rate-limiting))
-rather than needing a real Redis:
+**Docker must be running** - every `@SpringBootTest` class extends
+[`AbstractIntegrationTest`](saferide-backend/src/test/java/com/saferide/testsupport/AbstractIntegrationTest.java)
+(Phase 14), which boots a real MySQL 8.4 and a real Redis 7.4 via
+Testcontainers rather than the in-memory H2/SQL-fallback stand-ins the
+suite used through Phase 13. One MySQL container and one Redis container
+for the *entire* test JVM (the "singleton containers" pattern - started
+once in a static initializer, never explicitly stopped; Testcontainers'
+own Ryuk reaper removes them when the JVM exits), not one pair per test
+class, which would make a ~20-class suite unusably slow.
+`app.matching.geo-index-source`/`app.security.login-rate-limit.source`
+are switched to `redis` for these tests too - the whole suite now
+exercises `RedisDriverGeoIndex`/`RedisLoginRateLimiter` themselves through
+real HTTP requests, not their SQL/in-memory fallbacks (which keep their
+own dedicated, fast, no-Spring-context unit tests - see
+`SqlDriverGeoIndexTest`/`InMemoryLoginRateLimiterTest` below - that
+responsibility didn't move). Pure unit tests (Mockito, no Spring context -
+`FareCalculatorTest`, `RideStateMachineTest`, `DriverMatchScorerTest`,
+`ReliabilityCalculatorTest`, `VehicleServiceTest`, `AuthServiceTest`,
+`AdminAnalyticsServiceTest`, `JwtServiceTest`, and the Redis/SQL
+command-shape tests below) need no container at all and run exactly as
+fast as before.
 
 - [`SafeRideApplicationTests`](saferide-backend/src/test/java/com/saferide/SafeRideApplicationTests.java) — Spring context smoke test.
 - [`JwtServiceTest`](saferide-backend/src/test/java/com/saferide/auth/JwtServiceTest.java) — token round-trip, expiry, tamper rejection.
@@ -1237,20 +1269,30 @@ rather than needing a real Redis:
 - `AuthServiceTest`/`AuthIntegrationTest` gained rate-limiter coverage: a blocked account's failure isn't counted, the limiter is checked before the database is even touched, and (integration) ten real failed logins against one identifier are followed by an eleventh - correct password included - coming back `429 TOO_MANY_ATTEMPTS`, while a different identifier stays unaffected.
 - [`PostRideIntegrationTest`](saferide-backend/src/test/java/com/saferide/payment/PostRideIntegrationTest.java) — everything Phase 12 adds, driven through a real ride booked all the way to `PAYMENT_PENDING`: paying charges exactly the locked fare and a repeat attempt is rejected; rating moves the driver's `rating` measurably (EMA, not overwrite) and `RATED` being terminal blocks a second attempt; a stranger can't file a complaint but the ride's customer can, which measurably increments the driver's `complaintCount` and lowers `reliabilityScore`, shows up in the customer's own complaint history, and an admin can review/resolve it (twice → `409 INVALID_COMPLAINT_STATE`); an SOS alert is visible to admins and resolvable once (twice → `409 INVALID_SAFETY_ALERT_STATE`); and a trip-share link is readable with *no* `Authorization` header at all, rejects a bogus token, and returns the same still-valid token on a repeat request rather than minting a new one.
 - [`NotificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/notification/NotificationIntegrationTest.java) — a full ride lifecycle (book → confirm fare, which proactively assigns a driver → accept → arrive → start → complete → pay → file a complaint → admin resolves it) driven through real HTTP requests, asserting the right `Notification` shows up for the right user (customer, driver, or both) after every event; plus unread-count, mark-one-read, mark-all-read, and that a stranger gets `403` trying to mark someone else's notification read. None of this needs Kafka - `NotificationEventListener` runs off Spring's own `ApplicationEventPublisher` regardless of whether forwarding is enabled.
-- [`KafkaEventForwarderTest`](saferide-backend/src/test/java/com/saferide/event/KafkaEventForwarderTest.java) — the one test in the suite needing a real broker, via `@EmbeddedKafka` (a genuine in-JVM Kafka, no Docker required, same reasoning H2 replaces MySQL): a domain event published inside a real transaction that commits lands on `saferide.domain-events`, keyed by event type, with the exact payload; the same event published with no transaction at all is never forwarded, per `@TransactionalEventListener`'s own documented `AFTER_COMMIT` contract. Runs against its own isolated in-memory database (`saferide_test_kafka`, not the `saferide_test` every other class shares) - `@DirtiesContext` closes this class's Spring context afterward, and with `ddl-auto: create-drop`, closing a context sharing the common database would have dropped its schema out from under every other test class still relying on it.
+- [`KafkaEventForwarderTest`](saferide-backend/src/test/java/com/saferide/event/KafkaEventForwarderTest.java) — the one test in the suite needing a real broker, via `@EmbeddedKafka` (a genuine in-JVM Kafka, no Docker required for the broker itself): a domain event published inside a real transaction that commits lands on `saferide.domain-events`, keyed by event type, with the exact payload; the same event published with no transaction at all is never forwarded, per `@TransactionalEventListener`'s own documented `AFTER_COMMIT` contract. Gets its own small, dedicated MySQL Testcontainer (`@Testcontainers`/`@Container`, per-class lifecycle) rather than the shared singleton every other integration test uses - this class already needs its own one-off Spring context (different Kafka properties, `@DirtiesContext`), and with `ddl-auto: create-drop`, `@DirtiesContext` closing a context sharing the common container would have dropped its schema out from under every other test class still relying on it.
 - [`AdminAnalyticsServiceTest`](saferide-backend/src/test/java/com/saferide/admin/AdminAnalyticsServiceTest.java) — every field of `AnalyticsSummaryResponse` traces to exactly one (fully mocked) repository call, `activeRides` is confirmed to be the `total - completed - cancelled` remainder and never negative even when every ride is already terminal, and `openComplaints` is confirmed to be `OPEN + UNDER_REVIEW` summed rather than a single query.
-- [`AdminAnalyticsIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/AdminAnalyticsIntegrationTest.java) — a real ride booked, completed, and paid through actual HTTP requests moves `totalRides`/`completedRides`/`totalUsers`/`totalDrivers`/`verifiedDrivers`/`onlineDriversNow`/`totalRevenue` by exactly what this test itself contributed (asserted as a before/after delta, since the shared H2 database also holds every other test class's data); a non-admin gets `403`.
+- [`AdminAnalyticsIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/AdminAnalyticsIntegrationTest.java) — a real ride booked, completed, and paid through actual HTTP requests moves `totalRides`/`completedRides`/`totalUsers`/`totalDrivers`/`verifiedDrivers`/`onlineDriversNow`/`totalRevenue` by exactly what this test itself contributed (asserted as a before/after delta, since the shared MySQL Testcontainers instance also holds every other test class's data); a non-admin gets `403`.
 
-Testcontainers (real MySQL in tests, replacing today's H2 profile for the
-integration suite) arrives in Phase 14.
+134/134 backend tests passing (`mvn test`).
 
-**Frontend:** automated component/E2E tests arrive in Phase 14 alongside
-the backend's Testcontainers work. Until then, every frontend phase is
-verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
-type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
-production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 13 - plus a manual pass of the real flow against
-the backend described above.
+**Frontend** (Phase 14): component/unit tests via **Vitest + React Testing
+Library** - `cd saferide-frontend && npm test`. Full browser E2E
+(Playwright/Cypress, driven against a real running backend) is deliberately
+**not** part of this - disproportionate scope for what this phase needed,
+and better suited to sitting alongside [CI/CD](#cicd) later, where a real
+backend+database is already being stood up for the deploy pipeline anyway.
+What's here instead:
+
+- [`utils.test.ts`](saferide-frontend/src/lib/utils.test.ts) — `cn` joins plain classes, drops falsy conditionals, and resolves conflicting Tailwind utilities to the last one rather than shipping both.
+- [`Badge.test.tsx`](saferide-frontend/src/components/common/Badge.test.tsx) — renders its children, defaults to the neutral variant, applies the requested variant's classes, and merges a caller-supplied `className` rather than dropping it.
+- [`RatingStars.test.tsx`](saferide-frontend/src/components/ride/RatingStars.test.tsx) — one labelled button per star; clicking a star calls `onChange` with exactly that value; stars fill up to and including the current value; hovering previews a value without committing it and reverts cleanly on mouse-leave.
+- [`NotificationBell.test.tsx`](saferide-frontend/src/components/common/NotificationBell.test.tsx) — `notificationService` mocked, rendered inside a real `QueryClientProvider`: no badge when unread count is 0, the count shown when it isn't, capped at `9+`; the notification list isn't fetched until the bell is actually opened; fetched notifications render; clicking an unread one calls `markAsRead` and refreshes the count; "Mark all read" calls `markAllAsRead`; clicking outside the open dropdown closes it.
+
+Every frontend phase is also verified by `cd saferide-frontend && npm run
+build` (`tsc -b` strict type-checking, including
+`noUnusedLocals`/`noUnusedParameters`, then the production Vite bundle) and
+`npm run lint` (zero warnings tolerated) - both clean as of Phase 14 - plus
+a manual pass of the real flow against the backend described above.
 
 ## CI/CD
 
@@ -1284,8 +1326,8 @@ publishes to.
 | 11 | Redis — driver geo-matching, login rate limiting | ✅ Done |
 | 12 | Payment, rating, complaints, safety | ✅ Done |
 | 13 | Kafka events, notifications, analytics | ✅ Done |
-| 14 | Testing — JUnit, Mockito, Testcontainers | ⏳ Next |
-| 15 | Docker / Docker Compose (full stack) | Planned |
+| 14 | Testing — JUnit, Mockito, Testcontainers | ✅ Done |
+| 15 | Docker / Docker Compose (full stack) | ⏳ Next |
 | 16 | GitHub Actions CI/CD | Planned |
 | 17 | Deployment (free-tier MVP → AWS) | Planned |
 | 18 | Production optimization | Planned |

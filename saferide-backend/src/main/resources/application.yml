@@ -98,8 +98,10 @@ app:
     average-speed-kmh: 25.0
     # "redis" (default): DriverMatchingService gets candidates from a Redis geo-index -
     # see RedisDriverGeoIndex. "sql": falls back to the pre-Phase-11 full table scan
-    # (SqlDriverGeoIndex) - what runs under the test profile, where Redis isn't available yet
-    # (Testcontainers arrives Phase 14), and a legitimate no-Redis deployment option otherwise.
+    # (SqlDriverGeoIndex) - a legitimate no-Redis deployment option; also what
+    # SqlDriverGeoIndexTest exercises directly (no Spring context needed for that one).
+    # The main test suite runs against real Redis too now (Phase 14, via Testcontainers) -
+    # see AbstractIntegrationTest, which overrides this to "redis" explicitly.
     geo-index-source: ${MATCHING_GEO_INDEX_SOURCE:redis}
   security:
     login-rate-limit:
@@ -122,9 +124,9 @@ app:
   events:
     # In-app notifications (NotificationEventListener) always run - they're plain Spring
     # ApplicationEventPublisher listeners, no Kafka involved. This only controls the optional,
-    # additive KafkaEventForwarder mirror - "false" under the test profile, since the fast
-    # H2-backed suite has no broker to forward to (see KafkaEventForwarderTest for the one
-    # test that turns this back on against a real in-JVM broker).
+    # additive KafkaEventForwarder mirror - "false" under the test profile, since the main
+    # suite has no broker to forward to (see KafkaEventForwarderTest for the one test that
+    # turns this back on against a real in-JVM broker).
     kafka-forwarding-enabled: ${KAFKA_FORWARDING_ENABLED:true}
     topic: ${KAFKA_DOMAIN_EVENTS_TOPIC:saferide.domain-events}
 

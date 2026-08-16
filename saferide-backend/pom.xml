@@ -115,25 +115,44 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- In-memory DB for fast context/unit tests (application-test.yml).
-             Real MySQL is exercised via Testcontainers starting Phase 14. -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>test</scope>
-        </dependency>
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Real in-JVM Kafka broker for tests (@EmbeddedKafka) - no Docker needed, same reasoning as H2 above. -->
+        <!-- Real in-JVM Kafka broker for tests (@EmbeddedKafka) - no Docker needed for the broker itself,
+             see KafkaEventForwarderTest (it still uses its own dedicated Testcontainers MySQL below). -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Real MySQL + Redis in tests (Phase 14) - replaces the old H2/SQL-fallback/in-memory test
+             profile. See AbstractIntegrationTest: one MySQL + one Redis container, shared (singleton
+             pattern) across the whole suite so ~20 test classes don't each pay container startup cost. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>1.20.4</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <finalName>saferide-backend</finalName>

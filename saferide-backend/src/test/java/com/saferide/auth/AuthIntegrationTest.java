@@ -9,24 +9,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saferide.testsupport.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * Black-box coverage of the full auth flow through real HTTP-shaped
  * requests (no {@code @WithMockUser} shortcuts) - register, login, use the
  * access token against a protected endpoint, cross-role rejection, token
- * refresh + rotation, and logout revocation.
+ * refresh + rotation, and logout revocation. Login rate limiting here runs
+ * against a real Redis (Phase 14, via {@link AbstractIntegrationTest}), not
+ * the in-memory fallback - see {@code InMemoryLoginRateLimiterTest} for
+ * that one directly.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class AuthIntegrationTest {
+class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
