@@ -174,7 +174,13 @@ export default function RideTrackingPage() {
 
   if (isPending || !ride) return <FullPageSpinner label="Loading your ride…" />;
   const isCancelled = ride.status === "CANCELLED" || ride.status === "DRIVER_CANCELLED";
-  const canCancel = ["DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVED"].includes(ride.status);
+  // Matches RideStateMachine's own graph exactly (REQUESTED/SEARCHING_DRIVER -> CANCELLED is
+  // legal there too) - reachable here whenever a still-searching ride is opened from My Rides
+  // or the home page's recent-rides list rather than the fresh-booking flow (which shows
+  // FindingDriverPage's own cancel button first and only lands here once a driver is assigned).
+  const canCancel = ["REQUESTED", "SEARCHING_DRIVER", "DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVED"].includes(
+    ride.status,
+  );
   const canSendSafetySignals = ["DRIVER_ACCEPTED", "DRIVER_ARRIVED", "RIDE_STARTED"].includes(ride.status);
   const center: [number, number] = [ride.pickupLatitude, ride.pickupLongitude];
 
