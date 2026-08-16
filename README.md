@@ -6,8 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 12 of 18 complete (payment, rating, complaints and
-> safety). See [Roadmap](#roadmap) below for what's implemented vs. planned.
+> **Status:** Phase 13 of 18 complete (domain events, notifications, Kafka
+> forwarding, and admin analytics). See [Roadmap](#roadmap) below for what's
+> implemented vs. planned.
 
 ## Table of contents
 
@@ -22,6 +23,7 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Real-time (WebSocket)](#real-time-websocket)
 - [Redis (driver geo-matching, rate limiting)](#redis-driver-geo-matching-rate-limiting)
 - [Payment, rating, complaints and safety](#payment-rating-complaints-and-safety)
+- [Domain events, notifications, and analytics](#domain-events-notifications-and-analytics)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -87,8 +89,14 @@ own service later, if the project ever needs to.
                                           │  rate limits) │
                                           └──────────────┘
                                       │
-                         (Phase 13, optional) Kafka
-                         RideRequested / DriverAssigned / ...
+                              optional, additive
+                                      ▼
+                              ┌──────────────┐
+                              │    Kafka      │
+                              │ RideRequested │
+                              │ DriverAssigned│
+                              │ PaymentDone...│
+                              └──────────────┘
 ```
 
 Cross-cutting design decisions baked in from Phase 1:
@@ -109,15 +117,20 @@ Cross-cutting design decisions baked in from Phase 1:
 
 **Backend:** Java 21, Spring Boot 3, Spring Web, Spring Data JPA/Hibernate,
 Spring Security + JWT (Phase 2), Spring WebSocket/STOMP (Phase 10), Spring
-Data Redis (Phase 11), Spring Actuator, Maven, Lombok, springdoc-openapi/
-Swagger, JUnit 5, Mockito, Testcontainers (Phase 14).
+Data Redis (Phase 11), Spring Kafka (Phase 13, optional/additive), Spring
+Actuator, Maven, Lombok, springdoc-openapi/Swagger, JUnit 5, Mockito,
+Testcontainers (Phase 14).
 
 **Database:** MySQL 8 (source of truth) + Redis 7 (hot/ephemeral data —
 driver geo-index for matching, login rate limiting; see
 [Redis](#redis-driver-geo-matching-rate-limiting) below).
 
-**Messaging:** Apache Kafka (Phase 13, optional/additive — domain events like
-`RideRequested`, `DriverAssigned`, `PaymentCompleted`).
+**Messaging:** Apache Kafka (Phase 13, optional/additive — every domain
+event (`RideRequestedEvent`, `DriverAssignedEvent`, `RideCompletedEvent`,
+`PaymentCompletedEvent`, `ComplaintFiledEvent`, `ComplaintResolvedEvent`) is
+mirrored onto `saferide.domain-events` for consumers outside this JVM; the
+app itself never depends on Kafka being reachable - see
+[Domain events, notifications, and analytics](#domain-events-notifications-and-analytics)).
 
 **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui (Radix +
 CVA), React Router, Axios, TanStack Query, React Hook Form + Zod, Lucide
@@ -154,12 +167,16 @@ safeRide/
 │       │                    DriverReliabilityService already uses for every other driver stat
 │       ├── safety/          (Phase 12) SafetyAlert (SOS) + TripShare (public read-only tracking link),
 │       │                    SafetyService - the Safety Center's backend
-│       ├── notification/    (Phase 13)
+│       ├── event/           (Phase 13) DomainEvent + its six records (RideRequestedEvent, ...),
+│       │                    KafkaEventForwarder - the one place any event reaches Kafka, optional/additive
+│       ├── notification/    (Phase 13) Notification entity/service, NotificationEventListener - the one
+│       │                    place a DomainEvent becomes an in-app notification, entirely Kafka-independent
 │       ├── complaint/       (Phase 12) Complaint entity/service - the dispute system behind "the driver
 │       │                    cannot demand an unauthorized extra fare"; a customer-filed complaint feeds
 │       │                    the driver's complaintCount/reliabilityScore the same way Phase 6 designed for
 │       ├── admin/           Driver/vehicle/document verification review (frontend console: Phase 9);
-│       │                    AdminComplaintService/AdminSafetyService - complaint + SOS review (Phase 12)
+│       │                    AdminComplaintService/AdminSafetyService - complaint + SOS review (Phase 12);
+│       │                    AdminAnalyticsService - platform-wide COUNT/SUM/AVG summary (Phase 13)
 │       ├── websocket/       (Phase 10) WebSocketConfig, StompAuthChannelInterceptor, StompPrincipal -
 │       │                    STOMP CONNECT auth + per-ride SUBSCRIBE authorization
 │       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable, AuditLog(Service)
@@ -176,7 +193,8 @@ safeRide/
 │       ├── assets/
 │       ├── components/
 │       │   ├── common/       Button, Input, Card, Badge, Spinner, Skeleton,
-│       │   │                 ConfirmDialog, StateViews, ProtectedRoute (role-gated)
+│       │   │                 ConfirmDialog, StateViews, ProtectedRoute (role-gated),
+│       │   │                 NotificationBell (Phase 13, shared by all three navbars)
 │       │   ├── layout/       Navbar/MobileBottomNav/CustomerLayout,
 │       │   │                 DriverNavbar/DriverMobileBottomNav/DriverLayout (Phase 8),
 │       │   │                 AdminNavbar/AdminLayout (Phase 9, no mobile bottom nav)
@@ -198,13 +216,15 @@ safeRide/
 │       │   │                 DriverRideDetailPage, DriverEarningsPage, DriverProfilePage
 │       │   └── admin/        (Phase 9) AdminDashboardPage, AdminDriversPage,
 │       │                     AdminDriverDetailPage; AdminComplaintsPage,
-│       │                     AdminComplaintDetailPage, AdminSafetyPage (Phase 12)
+│       │                     AdminComplaintDetailPage, AdminSafetyPage (Phase 12);
+│       │                     AdminAnalyticsPage (Phase 13)
 │       ├── services/         api.ts (Axios + JWT/refresh interceptors), authService,
 │       │                     rideService (customer + driver actions), fareService,
 │       │                     customerService, driverService, vehicleService (Phase 8),
 │       │                     adminService (Phase 9), paymentService, ratingService,
 │       │                     complaintService, safetyService, adminComplaintService,
-│       │                     adminSafetyService (Phase 12)
+│       │                     adminSafetyService (Phase 12), notificationService,
+│       │                     adminAnalyticsService (Phase 13)
 │       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8),
 │       │                     useRideChannel (Phase 10 - useRideStatusChannel/
 │       │                     useRideLocationChannel/useDriverAssignmentChannel)
@@ -212,7 +232,8 @@ safeRide/
 │       │                     WebSocketContext (Phase 10 - one STOMP connection per session)
 │       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts,
 │       │                     admin.ts, ws.ts (Phase 10), payment.ts, rating.ts, complaint.ts,
-│       │                     safety.ts (Phase 12) - mirror the backend DTOs exactly
+│       │                     safety.ts (Phase 12), notification.ts, analytics.ts (Phase 13) -
+│       │                     mirror the backend DTOs exactly
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
@@ -276,6 +297,11 @@ this README accompanies; they land in the codebase starting Phase 2 (`USER`,
   DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED → PAYMENT_PENDING →
   PAYMENT_COMPLETED → RATED`) under `RideStateMachine`'s validation - no
   controller or service sets `status` directly.
+- `NOTIFICATION` (Phase 13) belongs to one `USER`, not one `RIDE` - a
+  single ride event (e.g. `DriverAssignedEvent`) produces one row per
+  recipient (customer *and* driver), so a ride with an eventful lifecycle
+  can have several. `rideId` on it is a bare column, not an FK, same
+  reasoning `AUDIT_LOG` already established.
 - `RIDE_LOCATION` (high-frequency GPS points) is **not** written to MySQL —
   live location lives in Redis; MySQL only ever sees the ride's key
   lifecycle timestamps (`createdAt`, `acceptedAt`, `startedAt`,
@@ -888,6 +914,96 @@ driver's score, a complaint that measurably moves `complaintCount`/
 resolution, and a public share link that works with no `Authorization`
 header at all) for the full mechanism and its test coverage.
 
+## Domain events, notifications, and analytics
+
+Three things bundled into one phase because they share one root: a small
+set of `DomainEvent` records (`RideRequestedEvent`, `DriverAssignedEvent`,
+`RideCompletedEvent`, `PaymentCompletedEvent`, `ComplaintFiledEvent`,
+`ComplaintResolvedEvent`) published from `RideService`/`PaymentService`/
+`ComplaintService`/`AdminComplaintService` at the exact points those
+actions already commit.
+
+### Two independent listeners, one guarantee that doesn't depend on Kafka
+
+Both listeners react to the same events via Spring's own
+`ApplicationEventPublisher` + `@TransactionalEventListener(phase =
+AFTER_COMMIT)` - never a raw `@EventListener`, since a notification (or a
+Kafka message) describing something a rolled-back transaction undid would
+be worse than not sending one at all. This is the same reasoning
+`RideEventPublisher` used for WebSocket broadcasts back in Phase 10, just
+via Spring's built-in mechanism instead of manual
+`TransactionSynchronizationManager` bookkeeping, since these are plain
+listener methods rather than something a REST controller calls directly.
+
+- **`NotificationEventListener`** turns each event into a `Notification`
+  row for whoever should see it (both sides get one for
+  `DriverAssignedEvent`/`RideCompletedEvent`/`PaymentCompletedEvent`; only
+  the filer for `ComplaintFiledEvent`/`ComplaintResolvedEvent`) - this is
+  the **only** thing `GET /api/notifications` depends on, and it never
+  touches Kafka. `NotificationService.create` runs with
+  `Propagation.REQUIRES_NEW` rather than the default - Spring's own
+  documented caveat for `AFTER_COMMIT` listeners is that the triggering
+  transaction's resources are still bound to the thread at that point
+  (final cleanup happens one step later), so a plain `REQUIRED` write here
+  would silently "join" a transaction that has already committed and will
+  never commit again, and the insert would never actually be flushed. A
+  genuinely new transaction is what makes the write real - see
+  [`KafkaEventForwarderTest`](saferide-backend/src/test/java/com/saferide/event/KafkaEventForwarderTest.java)'s
+  class doc, which found this the hard way.
+- **`KafkaEventForwarder`** mirrors the exact same event onto
+  `saferide.domain-events`, keyed by event type - "optional/additive"
+  literally: it's `@ConditionalOnProperty(app.events.kafka-forwarding-enabled)`
+  (`true` by default, `false` under the test profile), and even when
+  enabled it runs on a background thread (`@Async`, backed by
+  `@EnableAsync` on `SafeRideApplication`) with a broad catch around the
+  send - a slow or completely unreachable broker never adds latency to,
+  or fails, the request that triggered it. Nothing in this app reads from
+  this topic yet; it exists for a consumer outside this JVM that doesn't
+  exist yet (a future analytics pipeline, another service).
+
+### Notifications
+
+`Notification` (`user`, `type`, `title`, `message`, `rideId`, `read`,
+`readAt`) is a plain per-user inbox row - `rideId` is a bare `long`, not an
+FK, same reasoning `AuditLog` already documents: a notification should
+keep meaning what it said even if the ride it references later changes.
+`NotificationController` (`/api/notifications`) is entirely
+role-agnostic - list (optionally unread-only), unread count, mark one
+read, mark all read - the same four endpoints serve the customer, driver,
+and admin navbars identically, since ownership (not role) is what's being
+checked (`markAsRead` throws `UnauthorizedException` → `403` if the
+notification isn't the caller's own). The frontend's `NotificationBell`
+(shared by all three navbars) polls the unread count every 20s rather
+than subscribing over WebSocket - Phase 10's channels are ride-scoped
+(`/topic/rides/{id}/...`), not a generic per-user feed, so extending that
+would have meant a new STOMP destination this phase didn't need to justify
+yet; polling is the same honest fallback the public tracking page already
+uses for the same reason.
+
+### Analytics
+
+`AdminAnalyticsService.summary()` (`GET /api/admin/analytics/summary`,
+`ADMIN` only) is fifteen numbers, every one a real `COUNT`/`SUM`/`AVG`
+query - never an estimate, never rows pulled into Java and summed by
+hand. `activeRides` is the one derived value (`totalRides - completedRides
+- cancelledRides`, computed from two separate `countByStatusIn` queries
+against `RideStateMachine`'s own status groupings), everything else maps
+to exactly one repository call. The frontend's `AdminAnalyticsPage`
+renders it as stat cards (reusing the `StatCard` component from Phase 8)
+plus two small Recharts bar charts (rides by status, complaints by
+status) - a snapshot, not a time series, matching what the endpoint
+actually returns; it refetches every 30s.
+
+See [`event/`](saferide-backend/src/main/java/com/saferide/event/),
+[`NotificationEventListener`](saferide-backend/src/main/java/com/saferide/notification/NotificationEventListener.java),
+[`KafkaEventForwarder`](saferide-backend/src/main/java/com/saferide/event/KafkaEventForwarder.java),
+[`AdminAnalyticsService`](saferide-backend/src/main/java/com/saferide/admin/AdminAnalyticsService.java),
+and [`NotificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/notification/NotificationIntegrationTest.java)
+(a full ride lifecycle driven through real HTTP requests, asserting the
+right notification shows up for the right user at every step, plus
+unread-count/mark-read/mark-all-read/ownership checks) for the full
+mechanism and its test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -912,10 +1028,12 @@ Payment, rating and complaints ended up ride-scoped sub-resources
 Phases 4-6 established that same convention for fare/accept/decline/...,
 following it kept every ride-lifecycle action in one consistent place
 instead of splitting an otherwise-identical pattern across two shapes.
-`/api/complaints` (a caller's own history, not scoped to one ride) and
-`/api/admin/complaints`/`/api/admin/safety/alerts` (admin review) are the
-exceptions, for the same reason `GET /api/rides` and `GET /api/admin/drivers`
-already aren't ride-scoped either. Endpoint groups not covered by Phase 12
+`/api/complaints` (a caller's own history, not scoped to one ride),
+`/api/admin/complaints`/`/api/admin/safety/alerts` (admin review), and
+`/api/notifications`/`/api/admin/analytics/summary` (Phase 13, neither
+ride- nor role-scoped in the same way) are the exceptions, for the same
+reason `GET /api/rides` and `GET /api/admin/drivers` already aren't
+ride-scoped either. Endpoint groups not yet built
 (`/api/admin/{users,rides,reports}`, ...) are introduced with the phase
 that implements them and documented live via Swagger UI once the app is
 running:
@@ -975,6 +1093,11 @@ running:
 | PUT | `/api/admin/safety/alerts/{id}/resolve` | `ADMIN` | Resolving an already-resolved alert → `409 INVALID_SAFETY_ALERT_STATE` |
 | POST | `/api/rides/{id}/share` | `CUSTOMER` | Creates (or returns the still-valid existing) share token, 24h TTL |
 | GET | `/api/public/trips/{token}` | **Public - no auth** | Guarded only by possessing the token; deliberately stripped-down response (no OTP, no phone numbers) - see [Safety Center](#safety-center) |
+| GET | `/api/notifications` | Any authenticated user | `?unreadOnly=&page=&size=`; always the caller's own, regardless of role |
+| GET | `/api/notifications/unread-count` | Any authenticated user | Polled by `NotificationBell` every 20s |
+| PUT | `/api/notifications/{id}/read` | Any authenticated user | `403` if the notification isn't the caller's own |
+| PUT | `/api/notifications/read-all` | Any authenticated user | |
+| GET | `/api/admin/analytics/summary` | `ADMIN` | Fifteen numbers, every one a real `COUNT`/`SUM`/`AVG` query - see [Domain events, notifications, and analytics](#domain-events-notifications-and-analytics) |
 
 ### Real-time channels (Phase 10)
 
@@ -1113,6 +1236,10 @@ rather than needing a real Redis:
 - [`RedisLoginRateLimiterTest`](saferide-backend/src/test/java/com/saferide/auth/RedisLoginRateLimiterTest.java) — verifies the Redis command shape (`INCR`, `EXPIRE` set only on the first increment of a window, `DELETE` on success) and that a simulated Redis failure fails open on every method.
 - `AuthServiceTest`/`AuthIntegrationTest` gained rate-limiter coverage: a blocked account's failure isn't counted, the limiter is checked before the database is even touched, and (integration) ten real failed logins against one identifier are followed by an eleventh - correct password included - coming back `429 TOO_MANY_ATTEMPTS`, while a different identifier stays unaffected.
 - [`PostRideIntegrationTest`](saferide-backend/src/test/java/com/saferide/payment/PostRideIntegrationTest.java) — everything Phase 12 adds, driven through a real ride booked all the way to `PAYMENT_PENDING`: paying charges exactly the locked fare and a repeat attempt is rejected; rating moves the driver's `rating` measurably (EMA, not overwrite) and `RATED` being terminal blocks a second attempt; a stranger can't file a complaint but the ride's customer can, which measurably increments the driver's `complaintCount` and lowers `reliabilityScore`, shows up in the customer's own complaint history, and an admin can review/resolve it (twice → `409 INVALID_COMPLAINT_STATE`); an SOS alert is visible to admins and resolvable once (twice → `409 INVALID_SAFETY_ALERT_STATE`); and a trip-share link is readable with *no* `Authorization` header at all, rejects a bogus token, and returns the same still-valid token on a repeat request rather than minting a new one.
+- [`NotificationIntegrationTest`](saferide-backend/src/test/java/com/saferide/notification/NotificationIntegrationTest.java) — a full ride lifecycle (book → confirm fare, which proactively assigns a driver → accept → arrive → start → complete → pay → file a complaint → admin resolves it) driven through real HTTP requests, asserting the right `Notification` shows up for the right user (customer, driver, or both) after every event; plus unread-count, mark-one-read, mark-all-read, and that a stranger gets `403` trying to mark someone else's notification read. None of this needs Kafka - `NotificationEventListener` runs off Spring's own `ApplicationEventPublisher` regardless of whether forwarding is enabled.
+- [`KafkaEventForwarderTest`](saferide-backend/src/test/java/com/saferide/event/KafkaEventForwarderTest.java) — the one test in the suite needing a real broker, via `@EmbeddedKafka` (a genuine in-JVM Kafka, no Docker required, same reasoning H2 replaces MySQL): a domain event published inside a real transaction that commits lands on `saferide.domain-events`, keyed by event type, with the exact payload; the same event published with no transaction at all is never forwarded, per `@TransactionalEventListener`'s own documented `AFTER_COMMIT` contract. Runs against its own isolated in-memory database (`saferide_test_kafka`, not the `saferide_test` every other class shares) - `@DirtiesContext` closes this class's Spring context afterward, and with `ddl-auto: create-drop`, closing a context sharing the common database would have dropped its schema out from under every other test class still relying on it.
+- [`AdminAnalyticsServiceTest`](saferide-backend/src/test/java/com/saferide/admin/AdminAnalyticsServiceTest.java) — every field of `AnalyticsSummaryResponse` traces to exactly one (fully mocked) repository call, `activeRides` is confirmed to be the `total - completed - cancelled` remainder and never negative even when every ride is already terminal, and `openComplaints` is confirmed to be `OPEN + UNDER_REVIEW` summed rather than a single query.
+- [`AdminAnalyticsIntegrationTest`](saferide-backend/src/test/java/com/saferide/admin/AdminAnalyticsIntegrationTest.java) — a real ride booked, completed, and paid through actual HTTP requests moves `totalRides`/`completedRides`/`totalUsers`/`totalDrivers`/`verifiedDrivers`/`onlineDriversNow`/`totalRevenue` by exactly what this test itself contributed (asserted as a before/after delta, since the shared H2 database also holds every other test class's data); a non-admin gets `403`.
 
 Testcontainers (real MySQL in tests, replacing today's H2 profile for the
 integration suite) arrives in Phase 14.
@@ -1122,7 +1249,7 @@ the backend's Testcontainers work. Until then, every frontend phase is
 verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
 type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
 production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 12 - plus a manual pass of the real flow against
+both clean as of Phase 13 - plus a manual pass of the real flow against
 the backend described above.
 
 ## CI/CD
@@ -1136,8 +1263,9 @@ Docker images → push to a container registry → deploy).
 Local Docker first, free-tier MVP hosting next, AWS later — never required
 for local development. Target AWS shape (Phase 17+): Route 53 → CloudFront →
 ALB → Spring Boot containers → RDS MySQL + ElastiCache Redis, S3 for static
-assets, CloudWatch for logs/metrics, MSK (or a managed Kafka) once Phase 13
-events are in place.
+assets, CloudWatch for logs/metrics, MSK (or a managed Kafka) as the
+production home for the domain-events topic `KafkaEventForwarder` already
+publishes to.
 
 ## Roadmap
 
@@ -1155,8 +1283,8 @@ events are in place.
 | 10 | WebSocket/STOMP — real-time status & location | ✅ Done |
 | 11 | Redis — driver geo-matching, login rate limiting | ✅ Done |
 | 12 | Payment, rating, complaints, safety | ✅ Done |
-| 13 | Kafka events, notifications, analytics | ⏳ Next |
-| 14 | Testing — JUnit, Mockito, Testcontainers | Planned |
+| 13 | Kafka events, notifications, analytics | ✅ Done |
+| 14 | Testing — JUnit, Mockito, Testcontainers | ⏳ Next |
 | 15 | Docker / Docker Compose (full stack) | Planned |
 | 16 | GitHub Actions CI/CD | Planned |
 | 17 | Deployment (free-tier MVP → AWS) | Planned |

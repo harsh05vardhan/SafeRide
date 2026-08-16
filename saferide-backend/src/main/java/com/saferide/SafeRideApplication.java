@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * SafeRide backend entry point.
@@ -25,9 +26,15 @@ import org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerial
  * {@code PagedModel} instead of raw {@code PageImpl} - the latter has no
  * public constructor Jackson can use for the reverse direction and Spring
  * warns loudly about it otherwise.
+ *
+ * <p>{@link EnableAsync} backs {@code KafkaEventForwarder} (Phase 13) -
+ * forwarding a domain event to Kafka runs on a background thread so a
+ * slow or unreachable broker can never add latency to the request that
+ * triggered it, let alone fail it.
  */
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableSpringDataWebSupport(pageSerializationMode = PageSerializationMode.VIA_DTO)
+@EnableAsync
 public class SafeRideApplication {
 
     public static void main(String[] args) {

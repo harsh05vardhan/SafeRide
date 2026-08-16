@@ -9,4 +9,7 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     Page<Complaint> findByFiledByIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     Page<Complaint> findByStatusOrderByCreatedAtAsc(ComplaintStatus status, Pageable pageable);
+
+    /** Admin analytics summary (Phase 13). */
+    long countByStatus(ComplaintStatus status);
 }

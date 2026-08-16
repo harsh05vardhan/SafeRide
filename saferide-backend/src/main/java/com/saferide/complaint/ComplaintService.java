@@ -5,11 +5,14 @@ import com.saferide.complaint.dto.ComplaintRequest;
 import com.saferide.complaint.dto.ComplaintResponse;
 import com.saferide.driver.Driver;
 import com.saferide.driver.DriverReliabilityService;
+import com.saferide.event.ComplaintFiledEvent;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.exception.UnauthorizedException;
 import com.saferide.ride.Ride;
 import com.saferide.ride.RideRepository;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +33,7 @@ public class ComplaintService {
     private final ComplaintRepository complaintRepository;
     private final RideRepository rideRepository;
     private final DriverReliabilityService reliabilityService;
+    private final ApplicationEventPublisher domainEvents;
 
     @Transactional
     public ComplaintResponse file(AuthenticatedUser principal, Long rideId, ComplaintRequest request) {
@@ -64,7 +68,10 @@ public class ComplaintService {
             complaint.setFiledByRole(ComplaintFiledBy.DRIVER);
         }
 
-        return ComplaintResponse.from(complaintRepository.save(complaint));
+        Complaint saved = complaintRepository.save(complaint);
+        domainEvents.publishEvent(new ComplaintFiledEvent(
+                saved.getId(), ride.getId(), saved.getFiledBy().getId(), saved.getType().name(), Instant.now()));
+        return ComplaintResponse.from(saved);
     }
 
     @Transactional(readOnly = true)

@@ -43,6 +43,12 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Domain events -> notifications, optional/additive Kafka forwarding (Phase 13) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Security / JWT -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -119,6 +125,12 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Real in-JVM Kafka broker for tests (@EmbeddedKafka) - no Docker needed, same reasoning as H2 above. -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

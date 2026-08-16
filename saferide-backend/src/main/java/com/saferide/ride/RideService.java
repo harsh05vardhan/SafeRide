@@ -6,6 +6,9 @@ import com.saferide.driver.Driver;
 import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverReliabilityService;
 import com.saferide.driver.DriverService;
+import com.saferide.event.DriverAssignedEvent;
+import com.saferide.event.RideCompletedEvent;
+import com.saferide.event.RideRequestedEvent;
 import com.saferide.exception.DriverNotVerifiedException;
 import com.saferide.exception.DriverUnavailableException;
 import com.saferide.exception.DuplicateResourceException;
@@ -41,6 +44,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -87,6 +91,16 @@ import org.springframework.transaction.annotation.Transactional;
  * fare, updating the driver's rating/reliability) lives in
  * {@code PaymentService}/{@code RatingService}, this class only decides
  * who's allowed to trigger it and performs the actual status transition.
+ *
+ * <p><b>Domain events (Phase 13):</b> {@link #createRide}, {@link #attemptAutoAssign}
+ * and {@link #completeRide} publish a {@code com.saferide.event.DomainEvent}
+ * via Spring's own {@code ApplicationEventPublisher} - what
+ * {@code NotificationEventListener} turns into an in-app notification, and
+ * {@code KafkaEventForwarder} optionally mirrors onto Kafka. Publishing
+ * doesn't mean it was delivered inside this method: both listeners are
+ * {@code @TransactionalEventListener(AFTER_COMMIT)}, so an event that
+ * describes a save this method's own transaction later rolls back is
+ * simply never delivered at all.
  */
 @Service
 @RequiredArgsConstructor
@@ -106,6 +120,8 @@ public class RideService {
     private final RideEventPublisher eventPublisher;
     private final PaymentService paymentService;
     private final RatingService ratingService;
+    /** Domain events (Phase 13) - notifications and, optionally, Kafka - deliberately separate from {@link #eventPublisher}'s WebSocket broadcasts, which are a different concern with a different audience. */
+    private final ApplicationEventPublisher domainEvents;
 
     public RideEstimateResponse estimateRoute(RideEstimateRequest request) {
         RouteEstimate estimate = mapService.estimateRoute(
@@ -143,6 +159,7 @@ public class RideService {
         // Every ride gets a Fare the moment it exists, so GET .../fare always has something to
         // show - but the ride stays REQUESTED (invisible to drivers) until confirmFare locks it.
         fareService.createForRide(savedRide);
+        domainEvents.publishEvent(new RideRequestedEvent(savedRide.getId(), customerUserId, Instant.now()));
 
         return toResponse(savedRide, true);
     }
@@ -367,6 +384,8 @@ public class RideService {
         transitionTo(ride, RideStatus.PAYMENT_PENDING);
         Ride saved = rideRepository.save(ride);
         eventPublisher.publishStatusChange(saved);
+        domainEvents.publishEvent(new RideCompletedEvent(
+                saved.getId(), saved.getCustomer().getId(), saved.getDriver().getUser().getId(), Instant.now()));
         return toResponse(saved, false);
     }
 
@@ -482,6 +501,8 @@ public class RideService {
             // Private nudge to the newly-assigned driver - see RideEventPublisher's class doc for
             // why this can't reuse the /topic/rides/{id}/** channel the ride's customer uses.
             eventPublisher.publishAssignment(ride);
+            domainEvents.publishEvent(new DriverAssignedEvent(
+                    ride.getId(), ride.getCustomer().getId(), driver.getUser().getId(), Instant.now()));
         });
     }
 

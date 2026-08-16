@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
-import { ShieldCheck, LayoutDashboard, Car, MessageSquareWarning, Siren, LogOut } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, Car, MessageSquareWarning, Siren, BarChart3, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -8,6 +9,7 @@ const NAV_LINKS = [
   { to: "/admin/drivers", label: "Drivers", icon: Car },
   { to: "/admin/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/admin/safety", label: "Safety", icon: Siren },
+  { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export function AdminNavbar() {
@@ -44,6 +46,7 @@ export function AdminNavbar() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <span className="hidden text-sm font-medium text-foreground sm:inline">{user?.name}</span>
           <button
             onClick={() => void logout()}

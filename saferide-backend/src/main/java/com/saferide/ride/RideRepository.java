@@ -37,4 +37,7 @@ public interface RideRepository extends JpaRepository<Ride, Long> {
     boolean existsByIdAndCustomerId(Long rideId, Long customerId);
 
     boolean existsByIdAndDriver_User_Id(Long rideId, Long driverUserId);
+
+    /** Admin analytics summary (Phase 13) - one query covers completed/cancelled/(by subtraction) active counts. */
+    long countByStatusIn(Collection<RideStatus> statuses);
 }

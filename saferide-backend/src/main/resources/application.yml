@@ -34,6 +34,20 @@ spring:
       # Lettuce connects lazily - the app still boots fine if Redis is briefly unreachable;
       # only whatever request actually needs it (matching, login rate limiting) fails, not startup.
       timeout: 2000ms
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # A slow/unreachable broker must never make a request wait - KafkaEventForwarder already
+      # sends on a background thread (@Async) and these keep the client itself from blocking too.
+      # delivery.timeout.ms must be >= linger.ms + request.timeout.ms (Kafka enforces this at
+      # producer construction) - request.timeout.ms is lowered here rather than raising
+      # delivery.timeout.ms, so a single attempt still fails fast against an unreachable broker.
+      properties:
+        max.block.ms: 3000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 5000
 
 server:
   port: ${SERVER_PORT:8080}
@@ -105,6 +119,14 @@ app:
     complaint-penalty-cap: 30.0
     # How much one new ride event shifts a rate (exponential moving average) - see DriverReliabilityService.
     ema-alpha: 0.2
+  events:
+    # In-app notifications (NotificationEventListener) always run - they're plain Spring
+    # ApplicationEventPublisher listeners, no Kafka involved. This only controls the optional,
+    # additive KafkaEventForwarder mirror - "false" under the test profile, since the fast
+    # H2-backed suite has no broker to forward to (see KafkaEventForwarderTest for the one
+    # test that turns this back on against a real in-JVM broker).
+    kafka-forwarding-enabled: ${KAFKA_FORWARDING_ENABLED:true}
+    topic: ${KAFKA_DOMAIN_EVENTS_TOPIC:saferide.domain-events}
 
 springdoc:
   swagger-ui:

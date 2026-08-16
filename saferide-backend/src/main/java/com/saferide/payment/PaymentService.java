@@ -1,5 +1,6 @@
 package com.saferide.payment;
 
+import com.saferide.event.PaymentCompletedEvent;
 import com.saferide.exception.PaymentFailedException;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.fare.FareService;
@@ -8,6 +9,7 @@ import com.saferide.payment.dto.PaymentResponse;
 import com.saferide.ride.Ride;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +30,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentGateway paymentGateway;
     private final FareService fareService;
+    private final ApplicationEventPublisher domainEvents;
 
     /**
      * Charges the ride's locked fare. Called exactly once per ride, by
@@ -57,7 +60,13 @@ public class PaymentService {
         payment.setStatus(PaymentStatus.COMPLETED);
         payment.setTransactionReference(result.transactionReference());
         payment.setPaidAt(Instant.now());
-        return toResponse(paymentRepository.save(payment));
+        Payment saved = paymentRepository.save(payment);
+
+        domainEvents.publishEvent(new PaymentCompletedEvent(
+                ride.getId(), ride.getCustomer().getId(), ride.getDriver().getUser().getId(),
+                amount, fare.currency(), Instant.now()));
+
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)

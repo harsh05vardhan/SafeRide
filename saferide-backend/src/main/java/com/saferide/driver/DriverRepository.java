@@ -25,4 +25,9 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
      * distance, exclusions, busy check) in {@code DriverMatchingService}.
      */
     List<Driver> findByOnlineStatus(DriverOnlineStatus onlineStatus);
+
+    /** Admin analytics summary (Phase 13). */
+    long countByVerificationStatus(VerificationStatus status);
+
+    long countByOnlineStatus(DriverOnlineStatus status);
 }

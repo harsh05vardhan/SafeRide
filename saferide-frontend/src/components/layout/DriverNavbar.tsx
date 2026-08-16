@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 import { ShieldCheck, LayoutDashboard, Car, Wallet, User, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -44,6 +45,7 @@ export function DriverNavbar() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <span className="hidden text-sm font-medium text-foreground sm:inline">{user?.name}</span>
           <button
             onClick={() => void logout()}

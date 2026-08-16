@@ -5,11 +5,13 @@ import com.saferide.complaint.Complaint;
 import com.saferide.complaint.ComplaintRepository;
 import com.saferide.complaint.ComplaintStatus;
 import com.saferide.complaint.dto.ComplaintResponse;
+import com.saferide.event.ComplaintResolvedEvent;
 import com.saferide.exception.InvalidComplaintStateException;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.user.UserService;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class AdminComplaintService {
     private final ComplaintRepository complaintRepository;
     private final AuditLogService auditLogService;
     private final UserService userService;
+    private final ApplicationEventPublisher domainEvents;
 
     @Transactional(readOnly = true)
     public Page<ComplaintResponse> list(ComplaintStatus statusFilter, Pageable pageable) {
@@ -66,7 +69,12 @@ public class AdminComplaintService {
         complaint.setAdminNotes(notes);
         complaint.setResolvedBy(userService.getById(adminUserId));
         complaint.setResolvedAt(Instant.now());
-        return complaintRepository.save(complaint);
+        Complaint saved = complaintRepository.save(complaint);
+
+        domainEvents.publishEvent(new ComplaintResolvedEvent(
+                saved.getId(), saved.getFiledBy().getId(), target.name(), Instant.now()));
+
+        return saved;
     }
 
     private Complaint getOrThrow(Long complaintId) {

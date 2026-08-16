@@ -21,6 +21,11 @@ app:
   security:
     login-rate-limit:
       source: in-memory
+  events:
+    # No real Kafka broker in the fast H2-backed suite - KafkaEventForwarderTest re-enables this
+    # for itself against a real @EmbeddedKafka broker. In-app notifications are unaffected either
+    # way (NotificationEventListener needs no Kafka - see application.yml's comment).
+    kafka-forwarding-enabled: false
 
 logging:
   level:
