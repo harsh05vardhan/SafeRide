@@ -42,7 +42,10 @@ public class SecurityConfig {
         // WebSocket API can't set one) - real authentication happens per-connection on the STOMP
         // CONNECT frame instead, via StompAuthChannelInterceptor. Leaving /ws/** open at the HTTP
         // layer is what lets that handshake reach the STOMP layer at all.
-        "/ws/**"
+        "/ws/**",
+        // Deliberately unauthenticated (Phase 12) - a trip-share link is guarded only by
+        // possessing its own unguessable token, never a login. See SafetyService's class doc.
+        "/api/public/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

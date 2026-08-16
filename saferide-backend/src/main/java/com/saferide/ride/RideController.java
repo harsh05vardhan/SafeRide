@@ -3,6 +3,9 @@ package com.saferide.ride;
 import com.saferide.auth.AuthenticatedUser;
 import com.saferide.common.ApiResponse;
 import com.saferide.fare.dto.RideFareResponse;
+import com.saferide.payment.dto.PaymentResponse;
+import com.saferide.rating.dto.RatingRequest;
+import com.saferide.rating.dto.RatingResponse;
 import com.saferide.ride.dto.RideCreateRequest;
 import com.saferide.ride.dto.RideDestinationChangeRequest;
 import com.saferide.ride.dto.RideEstimateRequest;
@@ -146,5 +149,34 @@ public class RideController {
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<RideResponse> cancel(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
         return ApiResponse.ok("Ride cancelled", rideService.cancelRide(principal, id));
+    }
+
+    /** Charges the ride's locked fare (never a client-supplied amount) and advances {@code PAYMENT_PENDING -> PAYMENT_COMPLETED}. */
+    @PostMapping("/{id}/pay")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<RideResponse> pay(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok("Payment successful", rideService.payForRide(principal.userId(), id));
+    }
+
+    @GetMapping("/{id}/payment")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<PaymentResponse> getPayment(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok(rideService.getPayment(principal, id));
+    }
+
+    /** Rates the driver and advances {@code PAYMENT_COMPLETED -> RATED} - {@code RATED} is terminal, so this can only ever succeed once per ride. */
+    @PostMapping("/{id}/rating")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ApiResponse<RideResponse> rate(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable Long id,
+            @Valid @RequestBody RatingRequest request) {
+        return ApiResponse.ok("Thanks for your feedback", rideService.rateRide(principal.userId(), id, request));
+    }
+
+    @GetMapping("/{id}/rating")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<RatingResponse> getRating(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {
+        return ApiResponse.ok(rideService.getRating(principal, id));
     }
 }

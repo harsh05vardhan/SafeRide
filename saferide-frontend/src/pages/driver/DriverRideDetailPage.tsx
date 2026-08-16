@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Navigation, MapPin, Phone, CheckCircle2, XCircle, KeyRound } from "lucide-react";
+import { Navigation, MapPin, Phone, CheckCircle2, XCircle, KeyRound, MessageSquareWarning } from "lucide-react";
 import { rideService } from "@/services/rideService";
 import { fareService } from "@/services/fareService";
 import { driverService } from "@/services/driverService";
@@ -17,6 +17,7 @@ import { Input } from "@/components/common/Input";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { FullPageSpinner } from "@/components/common/Spinner";
 import { IncomingRequestCard } from "@/components/driver/IncomingRequestCard";
+import { ReportIssueDialog } from "@/components/ride/ReportIssueDialog";
 import { extractErrorMessage } from "@/services/api";
 import { ACTIVE_TRACKING_STATUSES } from "@/types/ride";
 
@@ -31,6 +32,7 @@ export default function DriverRideDetailPage() {
   const [otp, setOtp] = useState("");
   const [isActing, setIsActing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const { data: ride, isPending } = useQuery({
     queryKey: ["ride", rideId],
@@ -205,9 +207,16 @@ export default function DriverRideDetailPage() {
             <span className="text-xl font-extrabold text-dark">{fare ? `₹${fare.totalFare.toFixed(0)}` : "—"}</span>
           </div>
         </div>
-        <Button className="mt-6 w-full" onClick={() => navigate("/driver/dashboard")}>
+        <button
+          className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-semibold text-muted hover:text-foreground"
+          onClick={() => setShowReportDialog(true)}
+        >
+          <MessageSquareWarning size={14} /> Report an issue with this ride
+        </button>
+        <Button className="mt-4 w-full" onClick={() => navigate("/driver/dashboard")}>
           Back to dashboard
         </Button>
+        <ReportIssueDialog rideId={ride.id} open={showReportDialog} onClose={() => setShowReportDialog(false)} />
       </div>
     );
   }

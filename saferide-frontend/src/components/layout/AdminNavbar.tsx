@@ -1,11 +1,13 @@
 import { Link, NavLink } from "react-router-dom";
-import { ShieldCheck, LayoutDashboard, Car, LogOut } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, Car, MessageSquareWarning, Siren, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/drivers", label: "Drivers", icon: Car },
+  { to: "/admin/complaints", label: "Complaints", icon: MessageSquareWarning },
+  { to: "/admin/safety", label: "Safety", icon: Siren },
 ];
 
 export function AdminNavbar() {

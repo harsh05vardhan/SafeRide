@@ -54,6 +54,26 @@ public class DriverReliabilityService {
         recomputeAndSave(driver);
     }
 
+    /**
+     * A customer rated the driver after a ride (Phase 12). Same EMA shape
+     * as every other rate here, just on a 1-5 scale instead of 0-100 - one
+     * low rating nudges {@code rating} down proportionally to
+     * {@code ema-alpha} rather than either being averaged away by a long
+     * history or overwriting it outright.
+     */
+    @Transactional
+    public void recordRating(Driver driver, int score) {
+        driver.setRating(ema(driver.getRating(), score));
+        recomputeAndSave(driver);
+    }
+
+    /** A complaint was filed against this driver (Phase 12) - counted regardless of type, same as {@link com.saferide.driver.ReliabilityCalculator}'s generic complaint penalty. */
+    @Transactional
+    public void recordComplaint(Driver driver) {
+        driver.setComplaintCount(driver.getComplaintCount() + 1);
+        recomputeAndSave(driver);
+    }
+
     private void recomputeAndSave(Driver driver) {
         double score = reliabilityCalculator.calculate(
                 driver.getRating(), driver.getAcceptanceRate(), driver.getCompletionRate(),

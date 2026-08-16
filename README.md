@@ -6,9 +6,8 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 11 of 18 complete (Redis — driver geo-matching, login
-> rate limiting). See [Roadmap](#roadmap) below for what's implemented vs.
-> planned.
+> **Status:** Phase 12 of 18 complete (payment, rating, complaints and
+> safety). See [Roadmap](#roadmap) below for what's implemented vs. planned.
 
 ## Table of contents
 
@@ -22,6 +21,7 @@ rider becomes a disputable, audited event instead of a silent surcharge.
 - [Admin frontend](#admin-frontend)
 - [Real-time (WebSocket)](#real-time-websocket)
 - [Redis (driver geo-matching, rate limiting)](#redis-driver-geo-matching-rate-limiting)
+- [Payment, rating, complaints and safety](#payment-rating-complaints-and-safety)
 - [API contract](#api-contract)
 - [Local setup](#local-setup)
 - [Environment variables](#environment-variables)
@@ -148,12 +148,18 @@ safeRide/
 │       ├── matching/        DriverMatchScorer, DriverMatchingService, RideDriverExclusion -
 │       │                    proactive assignment + automatic reassignment; DriverGeoIndex
 │       │                    (Redis/SQL, Phase 11) - matching's candidate lookup
-│       ├── payment/         (Phase 12)
-│       ├── rating/          (Phase 12)
-│       ├── safety/          (Phase 12)
-│       ├── notification/    (Phase 12)
-│       ├── complaint/       (Phase 12)
-│       ├── admin/           Driver/vehicle/document verification review (frontend console: Phase 9)
+│       ├── payment/         (Phase 12) Payment entity, PaymentGateway abstraction - MockPaymentGateway
+│       │                    today, a real provider later; charges only the ride's locked fare
+│       ├── rating/          (Phase 12) Rating entity/service - feeds Driver.rating via the same EMA
+│       │                    DriverReliabilityService already uses for every other driver stat
+│       ├── safety/          (Phase 12) SafetyAlert (SOS) + TripShare (public read-only tracking link),
+│       │                    SafetyService - the Safety Center's backend
+│       ├── notification/    (Phase 13)
+│       ├── complaint/       (Phase 12) Complaint entity/service - the dispute system behind "the driver
+│       │                    cannot demand an unauthorized extra fare"; a customer-filed complaint feeds
+│       │                    the driver's complaintCount/reliabilityScore the same way Phase 6 designed for
+│       ├── admin/           Driver/vehicle/document verification review (frontend console: Phase 9);
+│       │                    AdminComplaintService/AdminSafetyService - complaint + SOS review (Phase 12)
 │       ├── websocket/       (Phase 10) WebSocketConfig, StompAuthChannelInterceptor, StompPrincipal -
 │       │                    STOMP CONNECT auth + per-ride SUBSCRIBE authorization
 │       ├── common/          ApiResponse, ApiErrorResponse, PingController, Auditable, AuditLog(Service)
@@ -175,31 +181,38 @@ safeRide/
 │       │   │                 DriverNavbar/DriverMobileBottomNav/DriverLayout (Phase 8),
 │       │   │                 AdminNavbar/AdminLayout (Phase 9, no mobile bottom nav)
 │       │   ├── map/          MapView, Pickup/Destination/DriverMarker, RouteLine
-│       │   ├── ride/         LocationPicker
+│       │   ├── ride/         LocationPicker; RatingStars, ReportIssueDialog, ShareRideDialog
+│       │   │                 (Phase 12) - shared by both the customer and driver ride screens
 │       │   ├── driver/       (Phase 8) StatCard, IncomingRequestCard
-│       │   ├── admin/        (Phase 9) StatusBadges, ReasonConfirmDialog
-│       │   └── safety/ (Phase 12)
+│       │   └── admin/        (Phase 9) StatusBadges, ReasonConfirmDialog
 │       ├── pages/
 │       │   ├── auth/         LoginPage, RegisterPage (role picker built in)
 │       │   ├── RoleLandingPage.tsx  "/" - routes single-role accounts straight
 │       │   │                 through, shows a chooser for multi-role accounts
+│       │   ├── PublicTrackingPage.tsx  (Phase 12) "/track/:token" - unauthenticated,
+│       │   │                 outside every ProtectedRoute; the "Share Ride" landing page
 │       │   ├── customer/     HomePage, RideOptionsPage, FareBreakdownPage,
-│       │   │                 FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage
+│       │   │                 FindingDriverPage, RideTrackingPage, MyRidesPage, ProfilePage,
+│       │   │                 MyComplaintsPage (Phase 12, also mounted at /driver/complaints)
 │       │   ├── driver/       (Phase 8) DriverDashboardPage, DriverRidesPage,
 │       │   │                 DriverRideDetailPage, DriverEarningsPage, DriverProfilePage
 │       │   └── admin/        (Phase 9) AdminDashboardPage, AdminDriversPage,
-│       │                     AdminDriverDetailPage
+│       │                     AdminDriverDetailPage; AdminComplaintsPage,
+│       │                     AdminComplaintDetailPage, AdminSafetyPage (Phase 12)
 │       ├── services/         api.ts (Axios + JWT/refresh interceptors), authService,
 │       │                     rideService (customer + driver actions), fareService,
 │       │                     customerService, driverService, vehicleService (Phase 8),
-│       │                     adminService (Phase 9)
+│       │                     adminService (Phase 9), paymentService, ratingService,
+│       │                     complaintService, safetyService, adminComplaintService,
+│       │                     adminSafetyService (Phase 12)
 │       ├── hooks/            useDriverProfile, useCurrentDriverRide (Phase 8),
 │       │                     useRideChannel (Phase 10 - useRideStatusChannel/
 │       │                     useRideLocationChannel/useDriverAssignmentChannel)
 │       ├── contexts/         AuthContext (isCustomer/isDriver/isAdmin), BookingContext, ToastContext,
 │       │                     WebSocketContext (Phase 10 - one STOMP connection per session)
 │       ├── types/            auth.ts, ride.ts, fare.ts, common.ts, driver.ts, vehicle.ts,
-│       │                     admin.ts, ws.ts (Phase 10) - mirror the backend DTOs exactly
+│       │                     admin.ts, ws.ts (Phase 10), payment.ts, rating.ts, complaint.ts,
+│       │                     safety.ts (Phase 12) - mirror the backend DTOs exactly
 │       ├── lib/               utils.ts (`cn`), tokenStorage.ts, validation.ts (Zod),
 │       │                     suggestedLocations.ts
 │       ├── routes/           AppRoutes.tsx (every page lazy-loaded)
@@ -250,13 +263,19 @@ this README accompanies; they land in the codebase starting Phase 2 (`USER`,
 - One `RIDE` has exactly one `FARE` and at most one `FARE_LOCK` - both are
   single rows **updated in place** (not appended) when a destination change
   forces a recalculation, matching the "one fare, one lock, per ride" shape
-  the entity list implies; a ride also has at most one `PAYMENT`, at most
-  one `RATING`, and zero or more `COMPLAINT`s.
+  the entity list implies; a ride also has at most one `PAYMENT` (Phase 12
+  - created only once `POST /api/rides/{id}/pay` succeeds, never before),
+  at most one `RATING` (Phase 12), and zero or more `COMPLAINT`s (Phase 12
+  - the only one of the three where "zero or more" actually matters: a
+  rider could file separate reports for an extra-fare demand *and* unsafe
+  driving on the same trip). A ride also has zero or more `SAFETY_ALERT`s
+  (one per SOS press) and at most one `TRIP_SHARE` (Phase 12) - see
+  [Safety Center](#safety-center).
 - `RIDE.status` moves through the full lifecycle
   (`REQUESTED → SEARCHING_DRIVER → DRIVER_ASSIGNED → DRIVER_ACCEPTED →
-  DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED → PAYMENT_PENDING → ...`)
-  under `RideStateMachine`'s validation - no controller or service sets
-  `status` directly.
+  DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED → PAYMENT_PENDING →
+  PAYMENT_COMPLETED → RATED`) under `RideStateMachine`'s validation - no
+  controller or service sets `status` directly.
 - `RIDE_LOCATION` (high-frequency GPS points) is **not** written to MySQL —
   live location lives in Redis; MySQL only ever sees the ride's key
   lifecycle timestamps (`createdAt`, `acceptedAt`, `startedAt`,
@@ -368,8 +387,9 @@ the primary path:
    cancellation, then `ReliabilityCalculator` recomputes the single 0-100
    `reliabilityScore` other drivers are compared against - both are
    configurable via `app.reliability.*`. `rating` and `complaintCount`
-   stay at their seeded defaults until ratings (Phase 12) and complaints
-   (Phase 12) actually exist to feed them.
+   moved the same way from their seeded defaults starting Phase 12, once
+   ratings and complaints existed to feed them - see
+   [Payment, rating, complaints and safety](#payment-rating-complaints-and-safety).
 6. **If nobody qualifies, the ride waits - it doesn't fail.** No eligible
    driver (none within `maxRadiusKm`, none with a verified matching
    vehicle) just leaves the ride at `SEARCHING_DRIVER`, discoverable via
@@ -440,11 +460,27 @@ A few design decisions worth calling out:
   only ever returns `otp` in the ride's own customer response (see Phase
   5) - the tracking page's OTP banner isn't hiding it from the driver by
   choice, it's rendering exactly what the API returned.
-- **Deferred, not faked.** Payment, rating, the Safety Center, and Support
-  have no backend yet (Phase 12) - rather than build screens that call
-  nothing, the post-ride summary says so plainly, and SOS/Share/Call/Chat
-  are visibly present (matching the design brief) but explicitly
-  "coming soon" when tapped, never a silent no-op.
+- **Deferred, not faked - until it wasn't.** Payment, rating, SOS and trip
+  sharing had no backend through Phase 11, and rather than build screens
+  that called nothing, they said so plainly and stayed explicitly "coming
+  soon" when tapped. Phase 12 is what makes all four real - see
+  [Payment, rating, complaints and safety](#payment-rating-complaints-and-safety).
+  Call/Chat remain the one deliberately-deferred pair left (no voice/chat
+  infrastructure exists anywhere in this stack), still a "coming soon"
+  toast rather than a silent no-op.
+- **The post-ride screen renders whatever status actually came back, not a
+  fixed "you're done" state.** `RideTrackingPage`'s finished view branches
+  on `ride.status` itself - a `Pay ₹X` button only while `PAYMENT_PENDING`,
+  the rating form only once `PAYMENT_COMPLETED`, the submitted rating only
+  once `RATED` - so refreshing mid-flow, or a WebSocket push landing while
+  the rating form is open, can never show a stale action a request would
+  now reject.
+- **One `ReportIssueDialog`, two ride screens.** The customer's
+  `RideTrackingPage` and the driver's `DriverRideDetailPage` both render
+  the same [`components/ride/ReportIssueDialog`](saferide-frontend/src/components/ride/ReportIssueDialog.tsx)
+  - "who this complaint is about" is inferred server-side from which side
+  of the ride the caller is on (see `ComplaintService`), so the component
+  itself needs no role prop or branching to work correctly from either side.
 - **Every route is lazy-loaded.** [`routes/AppRoutes.tsx`](saferide-frontend/src/routes/AppRoutes.tsx)
   code-splits every page - the Leaflet map stack (the single heaviest
   dependency in the app) never loads for someone who's only looking at
@@ -519,21 +555,27 @@ A few design decisions worth calling out:
   document form says so directly ("paste a hosted URL... direct uploads
   arrive in a later phase") instead of faking a file picker that has
   nowhere real to send the bytes.
+- **A driver can report a rider too (Phase 12).** `DriverRideDetailPage`'s
+  finished view renders the same `ReportIssueDialog` the customer side
+  does - filing works identically either way, the backend just doesn't
+  update any driver stat when the *driver* is the one filing (there's no
+  symmetric field on the customer side yet to update).
 
 ## Admin frontend
 
-The backend's admin surface today is exactly `/api/admin/drivers/**` -
-driver, vehicle and document verification review (`AdminDriverController`).
-There's no `/api/admin/users`, `/api/admin/rides`, `/api/admin/payments`,
-`/api/admin/complaints` or `/api/admin/reports` endpoint yet - those land
-with the phases that give admins something real to review (ride monitoring
-needs Phase 10's live status, payments/complaints need Phase 12). So Phase 9
-builds the **driver verification console** end to end rather than a wider
-dashboard with panels that call nothing:
+Phase 9 built the **driver verification console**
+(`/api/admin/drivers/**`) end to end rather than a wider dashboard with
+panels that called nothing - there was no `/api/admin/complaints` or
+`/api/admin/safety/alerts` yet for a wider console to show. Phase 12 adds
+both, following that same console's shape rather than inventing a new one;
+there's still no `/api/admin/users`, `/api/admin/rides`, `/api/admin/payments`
+or `/api/admin/reports` endpoint - those land with the phases that give
+admins something real to review there.
 
 **Login → Role Landing → Dashboard (counts + pending queue) → Drivers (filter
 + paginate) → Driver Detail (approve/block driver, approve/reject each
-vehicle and document).**
+vehicle and document) → Complaints (filter + paginate → resolve/dismiss) →
+Safety Alerts (active SOS presses → resolve).**
 
 A few design decisions worth calling out:
 
@@ -570,6 +612,18 @@ A few design decisions worth calling out:
   nav, unlike `CustomerLayout`/`DriverLayout` - tables and multi-field
   review screens are what an admin console actually needs, not a phone-sized
   card feed, so it isn't built as one.
+- **Complaints reuse the driver console's exact pattern (Phase 12).**
+  `AdminComplaintsPage`/`AdminComplaintDetailPage` are the same status-tab
+  list + paginate + `ReasonConfirmDialog` resolve/dismiss shape as
+  `AdminDriversPage`/`AdminDriverDetailPage`, right down to reusing
+  `AdminActionRequest` for the optional note - a fourth near-identical
+  admin review flow would have been a good reason to extract a shared
+  component, but three total data shapes (driver, complaint, safety alert)
+  each with small enough differences kept that not yet worth doing.
+- **Safety alerts poll while they matter, not always.** `AdminSafetyPage`
+  only refetches every 15s while viewing the `ACTIVE` tab - an SOS press
+  is the one thing in this console worth noticing without a manual
+  refresh; `RESOLVED`/`ALL` don't poll at all.
 - **The seeded admin account works immediately.** `admin@example.com` /
   `Password123!` (see [Seed data](#seed--demo-credentials)) logs straight
   into `/admin/dashboard` via `RoleLandingPage` and can review the seeded
@@ -746,6 +800,94 @@ and the `RedisDriverGeoIndexTest` / `SqlDriverGeoIndexTest` /
 `AuthIntegrationTest#repeatedFailedLoginsAreRateLimitedPerIdentifier` tests
 for the full mechanism and its test coverage.
 
+## Payment, rating, complaints and safety
+
+`RideStateMachine` had `RIDE_COMPLETED → PAYMENT_PENDING → PAYMENT_COMPLETED
+→ RATED` from Phase 4 on (its own class doc says as much - "for Phase 12's
+rating flow"); this phase is what finally drives those edges, plus the
+Safety Center screens that have shown "coming soon" toasts since Phase 7.
+
+### Payment and rating finish the Fare Lock guarantee, they don't reopen it
+
+`PaymentService.pay` never accepts an amount - it reads the ride's
+currently-**locked** fare itself via `FareService.getRideFare` and charges
+exactly that, through `PaymentGateway` (`MockPaymentGateway` today, a real
+provider - Razorpay, Stripe - a second implementation later, precisely
+`MapService`'s relationship to a real routing provider). The "driver
+cannot demand an unauthorized extra fare" promise wouldn't mean much if
+Phase 12 quietly let a different number get charged at the end - it can't:
+there is no request field for one.
+
+`RideService.payForRide`/`rateRide` follow the exact shape
+`confirmFare`/`changeDestination` already established: validate the
+transition first (`stateMachine.validateTransition`, so a ride in the
+wrong state is rejected before the gateway is ever touched or a rating is
+ever recorded), then delegate the domain-specific work to
+`PaymentService`/`RatingService`, then perform the transition itself.
+Rating a driver updates `Driver.rating` through the exact same
+exponential-moving-average `DriverReliabilityService` already uses for
+`acceptanceRate`/`completionRate`/`cancellationRate` (see
+[Matching](#matching-reliability-and-automatic-reassignment)) - one bad
+rating nudges it down proportionally to `app.reliability.ema-alpha`,
+never overwrites it outright.
+
+### Complaints are the dispute system the whole README has been building toward
+
+`ComplaintService.file` needs no `RideStateMachine` involvement at all - a
+complaint is a standalone record attachable to a ride at any point by
+either its customer or its assigned driver, independent of what status the
+ride is in. What *is* enforced: **every complaint filed by a customer -
+regardless of `type`, not just `EXTRA_FARE_DEMANDED` - increments the
+driver's `complaintCount` and recomputes `reliabilityScore`** through
+`DriverReliabilityService.recordComplaint`, the same field
+`ReliabilityCalculator`'s complaint penalty has read since Phase 6, seeded
+at 0 and waiting exactly for this. A driver can file about a customer too
+(symmetry, and drivers face bad-faith riders as often as the reverse), but
+there's no `complaintCount`-equivalent on the customer side to update -
+`User`/`Customer` has no such field, so filing there is honestly just a
+record, not a stat that feeds anything yet.
+
+Admin review (`AdminComplaintService`, `/admin/complaints`) mirrors driver
+verification's shape exactly: list/filter by status, inspect one, then
+`resolve`/`dismiss` with an optional note - the same `AdminActionRequest`
+and `ReasonConfirmDialog` [Admin frontend](#admin-frontend) already uses
+for block/reject, reused rather than rebuilt for a fourth time.
+
+### Safety Center
+
+Two independent features behind the buttons that have said "coming soon"
+since Phase 7:
+
+- **SOS** (`SafetyAlert`) - a plain record of who pressed it, from where
+  (the device's live position at that moment, not the ride's pickup point
+  - captured fresh, since an emergency mid-trip can be anywhere along the
+  route), visible to admins in real time-ish (`AdminSafetyPage` polls
+  every 15s while viewing active alerts) and resolvable once handled.
+- **Trip sharing** (`TripShare`) - a long random token (never a sequential
+  id), guarded by nothing else: `GET /api/public/trips/{token}` is the one
+  deliberately unauthenticated endpoint in the entire API
+  (`SecurityConfig` permits `/api/public/**` at the HTTP layer for exactly
+  this). `PublicTripResponse` is a stripped-down view on purpose - no OTP,
+  no phone numbers, nothing that would let a stranger holding the link
+  contact either party or interfere with the ride, just enough for a
+  friend or family member to watch it progress. The public tracking page
+  (`/track/:token`) polls every 8s rather than subscribing over
+  [WebSocket](#real-time-websocket) - the real-time channel authenticates
+  on CONNECT with a JWT a visitor here never has, so this stays an honest
+  plain poll instead of a live push it can't actually offer.
+
+See [`PaymentService`](saferide-backend/src/main/java/com/saferide/payment/PaymentService.java),
+[`RatingService`](saferide-backend/src/main/java/com/saferide/rating/RatingService.java),
+[`ComplaintService`](saferide-backend/src/main/java/com/saferide/complaint/ComplaintService.java),
+[`SafetyService`](saferide-backend/src/main/java/com/saferide/safety/SafetyService.java),
+and [`PostRideIntegrationTest`](saferide-backend/src/test/java/com/saferide/payment/PostRideIntegrationTest.java)
+(a real ride driven all the way through `PAYMENT_PENDING → PAYMENT_COMPLETED
+→ RATED`, exact-locked-fare charging, a rating that measurably moves the
+driver's score, a complaint that measurably moves `complaintCount`/
+`reliabilityScore`, admin resolve/dismiss idempotency, SOS visibility +
+resolution, and a public share link that works with no `Authorization`
+header at all) for the full mechanism and its test coverage.
+
 ## API contract
 
 Every response uses one of two envelopes:
@@ -763,15 +905,25 @@ Every response uses one of two envelopes:
 }
 ```
 
-Endpoint groups not listed below (`/api/payments`, `/api/ratings`,
-`/api/complaints`, `/api/admin/{users,rides,payments,complaints,reports}`,
-...) are introduced with the phase that implements them and documented
-live via Swagger UI once the app is running:
+Payment, rating and complaints ended up ride-scoped sub-resources
+(`/api/rides/{id}/pay`, `/api/rides/{id}/rating`,
+`/api/rides/{id}/complaints`) rather than the top-level
+`/api/payments`/`/api/ratings` collections envisioned in Phase 1 - once
+Phases 4-6 established that same convention for fare/accept/decline/...,
+following it kept every ride-lifecycle action in one consistent place
+instead of splitting an otherwise-identical pattern across two shapes.
+`/api/complaints` (a caller's own history, not scoped to one ride) and
+`/api/admin/complaints`/`/api/admin/safety/alerts` (admin review) are the
+exceptions, for the same reason `GET /api/rides` and `GET /api/admin/drivers`
+already aren't ride-scoped either. Endpoint groups not covered by Phase 12
+(`/api/admin/{users,rides,reports}`, ...) are introduced with the phase
+that implements them and documented live via Swagger UI once the app is
+running:
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-### Live endpoints (Phase 1–6)
+### Live endpoints
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -809,6 +961,20 @@ live via Swagger UI once the app is running:
 | POST | `/api/rides/{id}/complete` | `DRIVER` (assigned) | Auto-advances straight to `PAYMENT_PENDING` |
 | POST | `/api/rides/{id}/cancel` | Customer or assigned driver | Customer → `CANCELLED` (terminal); driver → excluded + reliability updated + **automatically reassigned** (or back to `SEARCHING_DRIVER` if nobody's left); blocked once `RIDE_STARTED` |
 | POST | `/api/fare/calculate` | `CUSTOMER` | Standalone preview (e.g. one call per vehicle card on the ride-options page) - computes but never persists anything |
+| POST | `/api/rides/{id}/pay` | `CUSTOMER` | Charges the ride's **locked** fare (never a client-supplied amount), advances `PAYMENT_PENDING → PAYMENT_COMPLETED`; a repeat call → `409 INVALID_RIDE_STATE` |
+| GET | `/api/rides/{id}/payment` | Customer, assigned driver, or `ADMIN` | `404` until `pay` has been called |
+| POST | `/api/rides/{id}/rating` | `CUSTOMER` | `{score: 1-5, comment?}`; advances `PAYMENT_COMPLETED → RATED` (terminal - a second attempt → `409`); updates the driver's `rating`/`reliabilityScore` via the same EMA every other driver stat uses |
+| GET | `/api/rides/{id}/rating` | Customer, assigned driver, or `ADMIN` | `404` until rated |
+| POST | `/api/rides/{id}/complaints` | Customer or assigned driver | `{type, description}`; a customer-filed complaint also increments the driver's `complaintCount` and recomputes `reliabilityScore`, regardless of `type` |
+| GET | `/api/complaints` | Any authenticated user | Every complaint the caller has ever filed, as either a customer or a driver, paginated |
+| GET | `/api/admin/complaints` | `ADMIN` | `?status=OPEN\|UNDER_REVIEW\|RESOLVED\|DISMISSED&page=&size=` |
+| GET | `/api/admin/complaints/{id}` | `ADMIN` | |
+| PUT | `/api/admin/complaints/{id}/resolve` \| `/dismiss` | `ADMIN` | `{reason?}`; either on an already-closed complaint → `409 INVALID_COMPLAINT_STATE` |
+| POST | `/api/rides/{id}/sos` | Customer or assigned driver | `{latitude, longitude}` - the caller's live position, not the ride's pickup point |
+| GET | `/api/admin/safety/alerts` | `ADMIN` | `?status=ACTIVE\|RESOLVED&page=&size=` |
+| PUT | `/api/admin/safety/alerts/{id}/resolve` | `ADMIN` | Resolving an already-resolved alert → `409 INVALID_SAFETY_ALERT_STATE` |
+| POST | `/api/rides/{id}/share` | `CUSTOMER` | Creates (or returns the still-valid existing) share token, 24h TTL |
+| GET | `/api/public/trips/{token}` | **Public - no auth** | Guarded only by possessing the token; deliberately stripped-down response (no OTP, no phone numbers) - see [Safety Center](#safety-center) |
 
 ### Real-time channels (Phase 10)
 
@@ -946,6 +1112,7 @@ rather than needing a real Redis:
 - [`InMemoryLoginRateLimiterTest`](saferide-backend/src/test/java/com/saferide/auth/InMemoryLoginRateLimiterTest.java) — a real behavioral test (not a mock) of the enforcement logic itself: allowed up to the limit, blocked at it, a success clears the counter entirely, and identifiers are tracked independently.
 - [`RedisLoginRateLimiterTest`](saferide-backend/src/test/java/com/saferide/auth/RedisLoginRateLimiterTest.java) — verifies the Redis command shape (`INCR`, `EXPIRE` set only on the first increment of a window, `DELETE` on success) and that a simulated Redis failure fails open on every method.
 - `AuthServiceTest`/`AuthIntegrationTest` gained rate-limiter coverage: a blocked account's failure isn't counted, the limiter is checked before the database is even touched, and (integration) ten real failed logins against one identifier are followed by an eleventh - correct password included - coming back `429 TOO_MANY_ATTEMPTS`, while a different identifier stays unaffected.
+- [`PostRideIntegrationTest`](saferide-backend/src/test/java/com/saferide/payment/PostRideIntegrationTest.java) — everything Phase 12 adds, driven through a real ride booked all the way to `PAYMENT_PENDING`: paying charges exactly the locked fare and a repeat attempt is rejected; rating moves the driver's `rating` measurably (EMA, not overwrite) and `RATED` being terminal blocks a second attempt; a stranger can't file a complaint but the ride's customer can, which measurably increments the driver's `complaintCount` and lowers `reliabilityScore`, shows up in the customer's own complaint history, and an admin can review/resolve it (twice → `409 INVALID_COMPLAINT_STATE`); an SOS alert is visible to admins and resolvable once (twice → `409 INVALID_SAFETY_ALERT_STATE`); and a trip-share link is readable with *no* `Authorization` header at all, rejects a bogus token, and returns the same still-valid token on a repeat request rather than minting a new one.
 
 Testcontainers (real MySQL in tests, replacing today's H2 profile for the
 integration suite) arrives in Phase 14.
@@ -955,7 +1122,7 @@ the backend's Testcontainers work. Until then, every frontend phase is
 verified by `cd saferide-frontend && npm run build` (`tsc -b` strict
 type-checking, including `noUnusedLocals`/`noUnusedParameters`, then the
 production Vite bundle) and `npm run lint` (zero warnings tolerated) -
-both clean as of Phase 10 - plus a manual pass of the real flow against
+both clean as of Phase 12 - plus a manual pass of the real flow against
 the backend described above.
 
 ## CI/CD
@@ -987,8 +1154,8 @@ events are in place.
 | 9 | Admin frontend (driver verification console) | ✅ Done |
 | 10 | WebSocket/STOMP — real-time status & location | ✅ Done |
 | 11 | Redis — driver geo-matching, login rate limiting | ✅ Done |
-| 12 | Payment, rating, complaints, safety | ⏳ Next |
-| 13 | Kafka events, notifications, analytics | Planned |
+| 12 | Payment, rating, complaints, safety | ✅ Done |
+| 13 | Kafka events, notifications, analytics | ⏳ Next |
 | 14 | Testing — JUnit, Mockito, Testcontainers | Planned |
 | 15 | Docker / Docker Compose (full stack) | Planned |
 | 16 | GitHub Actions CI/CD | Planned |

@@ -1,8 +1,9 @@
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { User, Mail, Phone, Calendar, ShieldCheck } from "lucide-react";
+import { User, Mail, Phone, Calendar, ShieldCheck, ChevronRight, MessageSquareWarning } from "lucide-react";
 import { customerService } from "@/services/customerService";
 import { useToast } from "@/contexts/ToastContext";
 import { Button } from "@/components/common/Button";
@@ -104,6 +105,17 @@ export default function ProfilePage() {
           </>
         )}
       </div>
+
+      <Link
+        to="/complaints"
+        className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <div className="flex items-center gap-3">
+          <MessageSquareWarning size={18} className="text-dark" />
+          <span className="text-sm font-medium text-foreground">My reports</span>
+        </div>
+        <ChevronRight size={16} className="text-muted" />
+      </Link>
     </div>
   );
 }

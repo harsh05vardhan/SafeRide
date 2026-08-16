@@ -19,6 +19,11 @@ import com.saferide.map.MapService;
 import com.saferide.map.RouteEstimate;
 import com.saferide.matching.DriverMatchingService;
 import com.saferide.matching.ExclusionReason;
+import com.saferide.payment.PaymentService;
+import com.saferide.payment.dto.PaymentResponse;
+import com.saferide.rating.RatingService;
+import com.saferide.rating.dto.RatingRequest;
+import com.saferide.rating.dto.RatingResponse;
 import com.saferide.ride.dto.RideCreateRequest;
 import com.saferide.ride.dto.RideDestinationChangeRequest;
 import com.saferide.ride.dto.RideDriverInfo;
@@ -74,6 +79,14 @@ import org.springframework.transaction.annotation.Transactional;
  * leaving the customer to start over - {@code RideStateMachine}'s
  * {@code DRIVER_CANCELLED -> SEARCHING_DRIVER} edge exists exactly for
  * this.
+ *
+ * <p><b>Payment and rating (Phase 12):</b> {@link #payForRide} and
+ * {@link #rateRide} finish the lifecycle {@code RideStateMachine} always
+ * had edges for (see its own class doc). Both follow the same shape as
+ * {@link #confirmFare}: the domain-specific work (charging the locked
+ * fare, updating the driver's rating/reliability) lives in
+ * {@code PaymentService}/{@code RatingService}, this class only decides
+ * who's allowed to trigger it and performs the actual status transition.
  */
 @Service
 @RequiredArgsConstructor
@@ -91,6 +104,8 @@ public class RideService {
     private final DriverMatchingService matchingService;
     private final DriverReliabilityService reliabilityService;
     private final RideEventPublisher eventPublisher;
+    private final PaymentService paymentService;
+    private final RatingService ratingService;
 
     public RideEstimateResponse estimateRoute(RideEstimateRequest request) {
         RouteEstimate estimate = mapService.estimateRoute(
@@ -384,6 +399,65 @@ public class RideService {
         Ride saved = rideRepository.save(ride);
         eventPublisher.publishStatusChange(saved);
         return toResponse(saved, isCustomer);
+    }
+
+    /**
+     * Charges the ride's locked fare (never a client-supplied amount -
+     * see {@code PaymentService}) and advances {@code PAYMENT_PENDING ->
+     * PAYMENT_COMPLETED}. The transition is validated before the charge
+     * happens, not after, so a ride in the wrong state is rejected without
+     * ever reaching the gateway.
+     */
+    @Transactional
+    public RideResponse payForRide(Long customerUserId, Long rideId) {
+        Ride ride = getRideOrThrow(rideId);
+        if (!ride.getCustomer().getId().equals(customerUserId)) {
+            throw new UnauthorizedException("This ride does not belong to you");
+        }
+        stateMachine.validateTransition(ride.getStatus(), RideStatus.PAYMENT_COMPLETED);
+
+        paymentService.pay(ride);
+        ride.setStatus(RideStatus.PAYMENT_COMPLETED);
+
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, true);
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentResponse getPayment(AuthenticatedUser principal, Long rideId) {
+        Ride ride = getRideOrThrow(rideId);
+        requireCustomerOrAssignedDriverOrAdmin(principal, ride);
+        return paymentService.getForRide(rideId);
+    }
+
+    /**
+     * Rates the driver and advances {@code PAYMENT_COMPLETED -> RATED} -
+     * {@code RATED} is terminal, so a ride can never be rated twice; a
+     * second attempt is rejected by {@code RideStateMachine} before
+     * {@code RatingService} is ever called.
+     */
+    @Transactional
+    public RideResponse rateRide(Long customerUserId, Long rideId, RatingRequest request) {
+        Ride ride = getRideOrThrow(rideId);
+        if (!ride.getCustomer().getId().equals(customerUserId)) {
+            throw new UnauthorizedException("This ride does not belong to you");
+        }
+        stateMachine.validateTransition(ride.getStatus(), RideStatus.RATED);
+
+        ratingService.rate(ride, request);
+        ride.setStatus(RideStatus.RATED);
+
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
+        return toResponse(saved, true);
+    }
+
+    @Transactional(readOnly = true)
+    public RatingResponse getRating(AuthenticatedUser principal, Long rideId) {
+        Ride ride = getRideOrThrow(rideId);
+        requireCustomerOrAssignedDriverOrAdmin(principal, ride);
+        return ratingService.getForRide(rideId);
     }
 
     /**

@@ -2,9 +2,22 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertOctagon, Phone, MessageCircle, Star, ShieldAlert, X, CheckCircle2, XCircle } from "lucide-react";
+import {
+  AlertOctagon,
+  Phone,
+  MessageCircle,
+  Star,
+  ShieldAlert,
+  X,
+  CheckCircle2,
+  XCircle,
+  MessageSquareWarning,
+} from "lucide-react";
 import { rideService } from "@/services/rideService";
 import { fareService } from "@/services/fareService";
+import { paymentService } from "@/services/paymentService";
+import { ratingService } from "@/services/ratingService";
+import { safetyService } from "@/services/safetyService";
 import { useToast } from "@/contexts/ToastContext";
 import { useRideLocationChannel, useRideStatusChannel } from "@/hooks/useRideChannel";
 import { MapView } from "@/components/map/MapView";
@@ -16,6 +29,9 @@ import { Button } from "@/components/common/Button";
 import { Badge } from "@/components/common/Badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { FullPageSpinner } from "@/components/common/Spinner";
+import { RatingStars } from "@/components/ride/RatingStars";
+import { ShareRideDialog } from "@/components/ride/ShareRideDialog";
+import { ReportIssueDialog } from "@/components/ride/ReportIssueDialog";
 import { extractErrorMessage } from "@/services/api";
 import { ACTIVE_TRACKING_STATUSES, type RideStatus } from "@/types/ride";
 
@@ -45,6 +61,14 @@ export default function RideTrackingPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [showSosConfirm, setShowSosConfirm] = useState(false);
+  const [isSendingSos, setIsSendingSos] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [ratingScore, setRatingScore] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
   const { data: ride, isPending } = useQuery({
     queryKey: ["ride", rideId],
@@ -81,6 +105,59 @@ export default function RideTrackingPage() {
     }
   }
 
+  async function sendSos() {
+    if (!rideId || !navigator.geolocation) return;
+    setIsSendingSos(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          await safetyService.triggerSos(Number(rideId), {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+          showToast("Alert sent - our safety team has been notified", "success");
+        } catch (error) {
+          showToast(extractErrorMessage(error), "error");
+        } finally {
+          setIsSendingSos(false);
+          setShowSosConfirm(false);
+        }
+      },
+      () => {
+        showToast("Couldn't get your location - please enable location access and try again", "error");
+        setIsSendingSos(false);
+      },
+    );
+  }
+
+  async function payNow() {
+    if (!rideId) return;
+    setIsPaying(true);
+    try {
+      await paymentService.pay(Number(rideId));
+      showToast("Payment successful", "success");
+      await queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
+    } catch (error) {
+      showToast(extractErrorMessage(error), "error");
+    } finally {
+      setIsPaying(false);
+    }
+  }
+
+  async function submitRating() {
+    if (!rideId || ratingScore === 0) return;
+    setIsSubmittingRating(true);
+    try {
+      await ratingService.rate(Number(rideId), { score: ratingScore, comment: ratingComment.trim() || undefined });
+      showToast("Thanks for your feedback", "success");
+      await queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
+    } catch (error) {
+      showToast(extractErrorMessage(error), "error");
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  }
+
   const isFinished = !!ride && ["RIDE_COMPLETED", "PAYMENT_PENDING", "PAYMENT_COMPLETED", "RATED"].includes(ride.status);
 
   const { data: fare } = useQuery({
@@ -89,9 +166,16 @@ export default function RideTrackingPage() {
     enabled: !!rideId && isFinished,
   });
 
+  const { data: submittedRating } = useQuery({
+    queryKey: ["rating", rideId],
+    queryFn: () => ratingService.getForRide(Number(rideId)),
+    enabled: !!rideId && ride?.status === "RATED",
+  });
+
   if (isPending || !ride) return <FullPageSpinner label="Loading your ride…" />;
   const isCancelled = ride.status === "CANCELLED" || ride.status === "DRIVER_CANCELLED";
   const canCancel = ["DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVED"].includes(ride.status);
+  const canSendSafetySignals = ["DRIVER_ACCEPTED", "DRIVER_ARRIVED", "RIDE_STARTED"].includes(ride.status);
   const center: [number, number] = [ride.pickupLatitude, ride.pickupLongitude];
 
   if (isCancelled) {
@@ -120,20 +204,70 @@ export default function RideTrackingPage() {
           <RouteSummary pickup={ride.pickupAddress} destination={ride.destinationAddress} />
           <div className="my-4 border-t border-dashed border-slate-200" />
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted">Fare paid</span>
-            <span className="text-xl font-extrabold text-dark">
-              {fare ? `₹${fare.totalFare.toFixed(0)}` : "—"}
-            </span>
+            <span className="text-sm font-medium text-muted">Fare</span>
+            <span className="text-xl font-extrabold text-dark">{fare ? `₹${fare.totalFare.toFixed(0)}` : "—"}</span>
           </div>
-          <p className="mt-3 text-xs text-muted">
-            Payment &amp; rating are coming soon - your fare was locked before the ride, so this is exactly what was
-            agreed, nothing more.
+          <p className="mt-2 text-xs text-muted">
+            Locked before the ride began - this is exactly what was agreed, nothing more.
           </p>
         </div>
 
-        <Button className="mt-6 w-full" onClick={() => navigate("/rides")}>
+        {ride.status === "PAYMENT_PENDING" && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <Button className="w-full" size="lg" onClick={payNow} isLoading={isPaying}>
+              Pay {fare ? `₹${fare.totalFare.toFixed(0)}` : "now"}
+            </Button>
+          </div>
+        )}
+
+        {ride.status === "PAYMENT_COMPLETED" && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-dark">Rate your driver</p>
+            <div className="mt-3 flex justify-center">
+              <RatingStars value={ratingScore} onChange={setRatingScore} />
+            </div>
+            <textarea
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="Anything you'd like to add? (optional)"
+              className="mt-3 w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+            <Button className="mt-3 w-full" onClick={submitRating} isLoading={isSubmittingRating} disabled={ratingScore === 0}>
+              Submit rating
+            </Button>
+          </div>
+        )}
+
+        {ride.status === "RATED" && submittedRating && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-dark">Your rating</p>
+            <div className="mt-2 flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  size={20}
+                  className={star <= submittedRating.score ? "fill-primary text-primary" : "fill-transparent text-slate-300"}
+                />
+              ))}
+            </div>
+            {submittedRating.comment && <p className="mt-2 text-sm text-muted">"{submittedRating.comment}"</p>}
+          </div>
+        )}
+
+        <button
+          className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-semibold text-muted hover:text-foreground"
+          onClick={() => setShowReportDialog(true)}
+        >
+          <MessageSquareWarning size={14} /> Report an issue with this ride
+        </button>
+
+        <Button className="mt-4 w-full" variant="outline" onClick={() => navigate("/rides")}>
           View my rides
         </Button>
+
+        <ReportIssueDialog rideId={ride.id} open={showReportDialog} onClose={() => setShowReportDialog(false)} />
       </div>
     );
   }
@@ -154,12 +288,14 @@ export default function RideTrackingPage() {
         <Badge variant="dark" className="pointer-events-auto">
           {STATUS_LABEL[ride.status]}
         </Badge>
-        <button
-          className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-danger px-4 py-2 text-xs font-bold text-white shadow-lg"
-          onClick={() => showToast("Emergency services would be alerted here (Phase 12 Safety Center).", "info")}
-        >
-          <AlertOctagon size={14} /> SOS
-        </button>
+        {canSendSafetySignals && (
+          <button
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-danger px-4 py-2 text-xs font-bold text-white shadow-lg"
+            onClick={() => setShowSosConfirm(true)}
+          >
+            <AlertOctagon size={14} /> SOS
+          </button>
+        )}
       </div>
 
       {/* OTP banner while waiting for the driver to arrive-confirm */}
@@ -214,7 +350,7 @@ export default function RideTrackingPage() {
           <div className="flex gap-2">
             <button
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-xs font-semibold text-foreground shadow"
-              onClick={() => showToast("Trip sharing is coming soon (Safety Center).", "info")}
+              onClick={() => setShowShareDialog(true)}
             >
               <ShieldAlert size={14} /> Share Ride
             </button>
@@ -241,6 +377,20 @@ export default function RideTrackingPage() {
         onConfirm={cancelRide}
         onCancel={() => setShowCancelConfirm(false)}
       />
+
+      <ConfirmDialog
+        open={showSosConfirm}
+        title="Send an SOS alert?"
+        description="Your current location will be shared with our safety team immediately."
+        confirmLabel="Send Alert"
+        cancelLabel="Cancel"
+        destructive
+        isLoading={isSendingSos}
+        onConfirm={sendSos}
+        onCancel={() => setShowSosConfirm(false)}
+      />
+
+      <ShareRideDialog rideId={ride.id} open={showShareDialog} onClose={() => setShowShareDialog(false)} />
     </div>
   );
 }

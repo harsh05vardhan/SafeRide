@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Car, FileText, LogOut, Plus, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Car, FileText, LogOut, Plus, CheckCircle2, Clock, XCircle, ChevronRight, MessageSquareWarning } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useDriverProfile } from "@/hooks/useDriverProfile";
@@ -309,6 +310,17 @@ export default function DriverProfilePage() {
           )}
         </div>
       </div>
+
+      <Link
+        to="/driver/complaints"
+        className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <div className="flex items-center gap-3">
+          <MessageSquareWarning size={18} className="text-dark" />
+          <span className="text-sm font-medium text-foreground">My reports</span>
+        </div>
+        <ChevronRight size={16} className="text-muted" />
+      </Link>
 
       <button
         onClick={() => void logout()}
