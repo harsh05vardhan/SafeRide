@@ -30,7 +30,7 @@ export interface RegisterRequest {
   licenseNumber?: string;
 }
 
-export type UserStatus = "ACTIVE" | "BLOCKED";
+export type UserStatus = "ACTIVE" | "BLOCKED" | "DELETED";
 
 export interface UserProfile {
   id: number;

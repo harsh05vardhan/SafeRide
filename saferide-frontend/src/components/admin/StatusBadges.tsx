@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, XCircle, Ban } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Ban, Trash2 } from "lucide-react";
 import { Badge } from "@/components/common/Badge";
 import type { VerificationStatus } from "@/types/common";
 import type { UserStatus } from "@/types/auth";
@@ -28,11 +28,20 @@ export function VerificationBadge({ status }: { status: VerificationStatus }) {
 }
 
 export function AccountStatusBadge({ status }: { status: UserStatus }) {
-  return status === "BLOCKED" ? (
-    <Badge variant="danger">
-      <Ban size={12} /> Blocked
-    </Badge>
-  ) : (
-    <Badge variant="success">Active</Badge>
-  );
+  switch (status) {
+    case "BLOCKED":
+      return (
+        <Badge variant="danger">
+          <Ban size={12} /> Blocked
+        </Badge>
+      );
+    case "DELETED":
+      return (
+        <Badge variant="neutral">
+          <Trash2 size={12} /> Deleted
+        </Badge>
+      );
+    default:
+      return <Badge variant="success">Active</Badge>;
+  }
 }

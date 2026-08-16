@@ -84,6 +84,9 @@ public class AuthService {
         if (user.getStatus() == UserStatus.BLOCKED) {
             throw new UnauthorizedException("This account has been blocked. Contact support.");
         }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new UnauthorizedException("This account no longer exists.");
+        }
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             loginRateLimiter.recordFailure(request.identifier());
             throw new InvalidCredentialsException();

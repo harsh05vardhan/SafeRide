@@ -26,3 +26,10 @@ export interface DriverAdminDetail {
 export interface AdminActionRequest {
   reason?: string;
 }
+
+/** Mirrors AdminUserSummaryResponse - every account regardless of role, for /admin/users. */
+export interface AdminUserSummary {
+  user: UserSummary;
+  status: UserStatus;
+  createdAt: string;
+}
