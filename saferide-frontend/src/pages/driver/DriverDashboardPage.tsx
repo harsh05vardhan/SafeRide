@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Star, ThumbsUp, XCircle, ShieldCheck, Car, ChevronRight, AlertTriangle } from "lucide-react";
+import { Star, ThumbsUp, XCircle, ShieldCheck, Car, ChevronRight, AlertTriangle, Radio } from "lucide-react";
 import { driverService } from "@/services/driverService";
 import { vehicleService } from "@/services/vehicleService";
 import { rideService } from "@/services/rideService";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDriverProfile } from "@/hooks/useDriverProfile";
 import { useCurrentDriverRide } from "@/hooks/useCurrentDriverRide";
 import { useToast } from "@/contexts/ToastContext";
@@ -16,6 +17,7 @@ import { extractErrorMessage } from "@/services/api";
 import { cn } from "@/lib/utils";
 
 export default function DriverDashboardPage() {
+  const { user } = useAuth();
   const { data: profile, isPending: profilePending } = useDriverProfile();
   // Same staleness reasoning as useDriverProfile - a vehicle admins verify while this page is
   // already open needs to show up here without a manual reload.
@@ -76,8 +78,16 @@ export default function DriverDashboardPage() {
     }
   }
 
+  const isOnline = profile?.onlineStatus === "ONLINE";
+  const firstName = user?.name?.split(" ")[0] ?? "there";
+
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-4 py-6 sm:px-6">
+      <div>
+        <p className="text-sm text-muted">Welcome back, {firstName} 👋</p>
+        <h1 className="text-2xl font-extrabold text-dark">Driver dashboard</h1>
+      </div>
+
       {/* Verification / vehicle setup banners */}
       {!profilePending && profile && !isVerified && (
         <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4">
@@ -107,30 +117,53 @@ export default function DriverDashboardPage() {
       )}
 
       {/* Online toggle */}
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <p className="text-lg font-bold text-dark">{profile?.onlineStatus === "ONLINE" ? "You're online" : "You're offline"}</p>
-          <p className="text-sm text-muted">
-            {profile?.onlineStatus === "ONLINE" ? "Looking for ride requests nearby" : "Go online to start receiving requests"}
-          </p>
-        </div>
-        <button
-          role="switch"
-          aria-checked={profile?.onlineStatus === "ONLINE"}
-          disabled={!canGoOnline || isTogglingStatus || profilePending}
-          onClick={() => void toggleOnline()}
-          className={cn(
-            "relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-40",
-            profile?.onlineStatus === "ONLINE" ? "bg-success" : "bg-slate-300",
-          )}
-        >
-          <span
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-colors",
+          isOnline ? "border-success/30 bg-success/5" : "border-slate-200 bg-white",
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
+                isOnline ? "bg-success/15 text-success" : "bg-slate-100 text-muted",
+              )}
+            >
+              <Radio size={20} className={isOnline ? "animate-pulse" : undefined} />
+            </span>
+            <div>
+              <p className="text-lg font-bold text-dark">{isOnline ? "You're online" : "You're offline"}</p>
+              <p className="text-sm text-muted">
+                {isOnline ? "Looking for ride requests nearby" : "Go online to start receiving requests"}
+              </p>
+            </div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={isOnline}
+            disabled={!canGoOnline || isTogglingStatus || profilePending}
+            onClick={() => void toggleOnline()}
             className={cn(
-              "absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
-              profile?.onlineStatus === "ONLINE" ? "translate-x-7" : "translate-x-1",
+              "relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-40",
+              isOnline ? "bg-success" : "bg-slate-300",
             )}
-          />
-        </button>
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                isOnline ? "translate-x-7" : "translate-x-1",
+              )}
+            />
+          </button>
+        </div>
+        {!canGoOnline && !profilePending && (isVerified || activeVehicle) && (
+          <p className="mt-3 text-xs text-muted">
+            {!isVerified ? "Waiting on account verification." : "Waiting on vehicle verification."} You'll be able to go online
+            automatically once that's approved.
+          </p>
+        )}
       </div>
 
       {/* Incoming request / current ride */}
@@ -157,7 +190,7 @@ export default function DriverDashboardPage() {
         ) : (
           <>
             <StatCard icon={Star} label="Rating" value={profile.rating.toFixed(1)} />
-            <StatCard icon={ThumbsUp} label="Acceptance" value={`${profile.acceptanceRate.toFixed(0)}%`} />
+            <StatCard icon={ThumbsUp} label="Acceptance" value={`${profile.acceptanceRate.toFixed(0)}%`} tone="success" />
             <StatCard
               icon={XCircle}
               label="Cancellation"
@@ -169,20 +202,21 @@ export default function DriverDashboardPage() {
         )}
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <span className="text-sm text-muted">Verification status</span>
-        <Badge variant={isVerified ? "success" : "primary"}>{profile?.verificationStatus ?? "—"}</Badge>
-      </div>
-
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <span className="text-sm text-muted">Active vehicle</span>
-        {activeVehicle ? (
-          <span className="text-sm font-semibold text-foreground">
-            {activeVehicle.vehicleModel} · {activeVehicle.vehicleNumber}
-          </span>
-        ) : (
-          <span className="text-sm text-muted">None</span>
-        )}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between p-4">
+          <span className="text-sm text-muted">Verification status</span>
+          <Badge variant={isVerified ? "success" : "primary"}>{profile?.verificationStatus ?? "—"}</Badge>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-100 p-4">
+          <span className="text-sm text-muted">Active vehicle</span>
+          {activeVehicle ? (
+            <span className="text-sm font-semibold text-foreground">
+              {activeVehicle.vehicleModel} · {activeVehicle.vehicleNumber}
+            </span>
+          ) : (
+            <span className="text-sm text-muted">None</span>
+          )}
+        </div>
       </div>
     </div>
   );
