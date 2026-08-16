@@ -1,0 +1,72 @@
+name: CI
+
+# Fast feedback on every push/PR - tests, lint, build. No images, no registry, no deploy;
+# that's cd.yml's job (Phase 16), triggered only on main.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# A new push makes an in-flight run for the same branch/PR moot - cancel it rather than
+# waiting for a result nobody needs anymore.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: saferide-backend/pom.xml
+
+      # ubuntu-latest ships Docker pre-installed and running - every @SpringBootTest class
+      # extends AbstractIntegrationTest (Phase 14), which needs it for real MySQL/Redis
+      # Testcontainers, not an in-memory stand-in.
+      - name: Run tests
+        working-directory: saferide-backend
+        run: mvn -B test
+
+      - name: Upload surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: saferide-backend/target/surefire-reports/
+          retention-days: 7
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: saferide-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: saferide-frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: saferide-frontend
+        run: npm run lint
+
+      - name: Test
+        working-directory: saferide-frontend
+        run: npm test
+
+      - name: Build
+        working-directory: saferide-frontend
+        run: npm run build

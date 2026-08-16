@@ -6,10 +6,9 @@ ride.** Fare calculation runs entirely on the backend, the confirmed fare is
 locked before matching begins, and any attempt to extract more money from the
 rider becomes a disputable, audited event instead of a silent surcharge.
 
-> **Status:** Phase 15 of 18 complete (the full stack containerized - one
-> `docker compose up --build` for MySQL, Redis, backend, and frontend, plus
-> an optional real Kafka broker). See [Roadmap](#roadmap) below for what's
-> implemented vs. planned.
+> **Status:** Phase 16 of 18 complete (GitHub Actions CI/CD - test+lint on
+> every push, Docker images published to GHCR on `main`). See
+> [Roadmap](#roadmap) below for what's implemented vs. planned.
 
 ## Table of contents
 
@@ -1350,9 +1349,44 @@ a manual pass of the real flow against the backend described above.
 
 ## CI/CD
 
-`.github/workflows/ci.yml` / `cd.yml` are introduced in Phase 16
-(checkout → setup Java/Node → backend tests → frontend tests → build → build
-Docker images → push to a container registry → deploy).
+Two workflows (Phase 16), split by how often each should run:
+
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — every push/PR
+  against `main`. `backend`: JDK 21 (Temurin, Maven-cached), `mvn test` -
+  `ubuntu-latest` ships Docker pre-installed and running, which is all
+  [`AbstractIntegrationTest`](saferide-backend/src/test/java/com/saferide/testsupport/AbstractIntegrationTest.java)
+  (Phase 14) needs for its real MySQL/Redis Testcontainers; surefire
+  reports upload as an artifact on failure. `frontend`: Node 20
+  (npm-cached), `npm ci` → `npm run lint` → `npm test` → `npm run build`.
+  Runs are cancelled if superseded by a newer push to the same
+  branch/PR.
+- [`.github/workflows/cd.yml`](.github/workflows/cd.yml) — pushes to
+  `main` (plus manual `workflow_dispatch`). Repeats the same test/lint
+  steps first (CD can't assume CI already ran for this exact commit - a
+  `workflow_dispatch` run has no associated CI run at all), then builds
+  and pushes both Docker images to **GHCR** (`ghcr.io/<owner>/saferide-backend`,
+  `ghcr.io/<owner>/saferide-frontend`, tagged `latest` and the commit SHA)
+  using the workflow's own automatic `GITHUB_TOKEN` - zero secrets to
+  configure by hand for a fork to get this far. Stops there deliberately:
+  actually deploying that image anywhere is Phase 17's job, not this
+  one.
+
+Both workflows target `main` as the default branch, which this
+repository's own current branch (an app-modernization tooling artifact,
+not something created for this project) isn't - rename to `main` (the
+normal setup for a real fork) or adjust the `branches:` triggers to match
+before pushing to GitHub.
+
+**Verification note:** this session has no GitHub remote or `gh` CLI
+available, so neither workflow has run for real on GitHub's own runners.
+What *was* verified locally: both files pass
+[`actionlint`](https://github.com/rhysd/actionlint) (syntax, expression,
+and action-input validation, shellcheck-backed) with zero findings, and
+every command each job invokes (`mvn -B test`, `npm ci`, `npm run lint`,
+`npm test`, `npm run build`) was run directly and confirmed to exit `0`.
+The one thing that couldn't be exercised outside GitHub's own runners is
+the workflow orchestration itself (triggers, job dependency ordering, the
+GHCR push).
 
 ## Deployment
 
@@ -1382,8 +1416,8 @@ publishes to.
 | 13 | Kafka events, notifications, analytics | ✅ Done |
 | 14 | Testing — JUnit, Mockito, Testcontainers | ✅ Done |
 | 15 | Docker / Docker Compose (full stack) | ✅ Done |
-| 16 | GitHub Actions CI/CD | ⏳ Next |
-| 17 | Deployment (free-tier MVP → AWS) | Planned |
+| 16 | GitHub Actions CI/CD | ✅ Done |
+| 17 | Deployment (free-tier MVP → AWS) | ⏳ Next |
 | 18 | Production optimization | Planned |
 
 ---
