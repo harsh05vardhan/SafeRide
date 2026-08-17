@@ -13,6 +13,12 @@ public record DriverAdminSummaryResponse(
         String licenseNumber,
         VerificationStatus verificationStatus,
         DriverOnlineStatus onlineStatus,
+        Double rating,
+        Double acceptanceRate,
+        Double cancellationRate,
+        Double completionRate,
+        Double onTimeRate,
+        Integer complaintCount,
         Double reliabilityScore,
         Instant createdAt) {
 }

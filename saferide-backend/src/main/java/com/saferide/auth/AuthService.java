@@ -4,9 +4,11 @@ import com.saferide.auth.dto.AuthResponse;
 import com.saferide.auth.dto.LoginRequest;
 import com.saferide.auth.dto.RegisterRequest;
 import com.saferide.driver.DriverService;
+import com.saferide.exception.AccountBlockedException;
 import com.saferide.exception.InvalidCredentialsException;
 import com.saferide.exception.InvalidRefreshTokenException;
 import com.saferide.exception.UnauthorizedException;
+import com.saferide.settings.PlatformSettingsService;
 import com.saferide.user.User;
 import com.saferide.user.UserRepository;
 import com.saferide.user.UserService;
@@ -45,6 +47,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final LoginRateLimiter loginRateLimiter;
+    private final PlatformSettingsService platformSettingsService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -82,7 +85,7 @@ public class AuthService {
                 });
 
         if (user.getStatus() == UserStatus.BLOCKED) {
-            throw new UnauthorizedException("This account has been blocked. Contact support.");
+            throw blockedException();
         }
         if (user.getStatus() == UserStatus.DELETED) {
             throw new UnauthorizedException("This account no longer exists.");
@@ -96,6 +99,14 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    /**
+     * Same BLOCKED/DELETED check {@link #login} does - without it, an
+     * account blocked mid-session would keep working indefinitely: the
+     * access token itself is a short-lived, self-contained JWT nothing
+     * re-checks against the database (see {@code JwtAuthenticationFilter}),
+     * so silent refresh-on-expiry was the one place still capable of
+     * handing a blocked/deleted account a brand new valid session.
+     */
     @Transactional
     public AuthResponse refresh(String rawRefreshToken) {
         String tokenHash = hash(rawRefreshToken);
@@ -106,11 +117,27 @@ public class AuthService {
             throw new InvalidRefreshTokenException("Refresh token is invalid or has expired");
         }
 
+        User user = stored.getUser();
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            throw blockedException();
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new UnauthorizedException("This account no longer exists.");
+        }
+
         // Rotate: revoke the used token so it can never be replayed, issue a fresh pair.
         stored.setRevoked(true);
         refreshTokenRepository.save(stored);
 
-        return issueTokens(stored.getUser());
+        return issueTokens(user);
+    }
+
+    private AccountBlockedException blockedException() {
+        String supportPhone = platformSettingsService.getSupportPhoneNumber();
+        String message = supportPhone == null
+                ? "This account has been blocked. Contact support."
+                : "This account has been blocked. Contact support at " + supportPhone + ".";
+        return new AccountBlockedException(message);
     }
 
     @Transactional

@@ -9,7 +9,9 @@ import { useToast } from "@/contexts/ToastContext";
 import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import { Label, FieldError } from "@/components/common/Label";
-import { extractErrorMessage } from "@/services/api";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { extractErrorCode, extractErrorMessage } from "@/services/api";
+import { settingsService } from "@/services/settingsService";
 import { loginSchema, type LoginFormValues } from "@/lib/validation";
 import { SAFERIDE_FEATURES } from "@/lib/features";
 
@@ -64,6 +66,7 @@ export default function LoginPage() {
   const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [blockedInfo, setBlockedInfo] = useState<{ message: string; supportPhone: string } | null>(null);
 
   const {
     register,
@@ -79,7 +82,24 @@ export default function LoginPage() {
       const redirectTo = (location.state as { from?: Location })?.from?.pathname ?? "/home";
       navigate(redirectTo, { replace: true });
     } catch (error) {
-      showToast(extractErrorMessage(error), "error");
+      const message = extractErrorMessage(error);
+      // A blocked account gets a proper dialog with a tappable "Call support" action - only when
+      // a number is actually configured, never a dialog offering to call a number that isn't
+      // there. Anything else (wrong password, rate-limited, ...) is still just a toast.
+      if (extractErrorCode(error) === "ACCOUNT_BLOCKED") {
+        try {
+          const settings = await settingsService.getSupportContact();
+          if (settings.supportPhoneNumber) {
+            setBlockedInfo({ message, supportPhone: settings.supportPhoneNumber });
+          } else {
+            showToast(message, "error");
+          }
+        } catch {
+          showToast(message, "error");
+        }
+      } else {
+        showToast(message, "error");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -272,6 +292,20 @@ export default function LoginPage() {
           </p>
         </motion.div>
       </div>
+
+      <ConfirmDialog
+        open={!!blockedInfo}
+        title="Account blocked"
+        description={blockedInfo?.message ?? ""}
+        confirmLabel={`Call ${blockedInfo?.supportPhone ?? ""}`}
+        cancelLabel="Close"
+        destructive
+        onConfirm={() => {
+          if (blockedInfo) window.location.href = `tel:${blockedInfo.supportPhone}`;
+          setBlockedInfo(null);
+        }}
+        onCancel={() => setBlockedInfo(null)}
+      />
     </div>
   );
 }

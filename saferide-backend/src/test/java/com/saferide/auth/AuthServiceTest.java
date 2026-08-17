@@ -12,10 +12,11 @@ import com.saferide.auth.dto.AuthResponse;
 import com.saferide.auth.dto.LoginRequest;
 import com.saferide.auth.dto.RegisterRequest;
 import com.saferide.driver.DriverService;
+import com.saferide.exception.AccountBlockedException;
 import com.saferide.exception.DuplicateResourceException;
 import com.saferide.exception.InvalidCredentialsException;
 import com.saferide.exception.InvalidRefreshTokenException;
-import com.saferide.exception.UnauthorizedException;
+import com.saferide.settings.PlatformSettingsService;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserRepository;
@@ -39,6 +40,7 @@ class AuthServiceTest {
     @Mock private DriverService driverService;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private LoginRateLimiter loginRateLimiter;
+    @Mock private PlatformSettingsService platformSettingsService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private JwtService jwtService;
@@ -54,7 +56,7 @@ class AuthServiceTest {
 
         authService = new AuthService(
                 userRepository, userService, driverService, refreshTokenRepository,
-                passwordEncoder, jwtService, jwtProperties, loginRateLimiter);
+                passwordEncoder, jwtService, jwtProperties, loginRateLimiter, platformSettingsService);
     }
 
     private User activeUser(String password) {
@@ -145,9 +147,21 @@ class AuthServiceTest {
         when(userRepository.findByEmailOrPhone("test@example.com")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("test@example.com", "CorrectHorse1!")))
-                .isInstanceOf(UnauthorizedException.class);
+                .isInstanceOf(AccountBlockedException.class);
         // Not counted as a rate-limited failure - see AuthService.login's class doc on why.
         verify(loginRateLimiter, org.mockito.Mockito.never()).recordFailure(anyString());
+    }
+
+    @Test
+    void blockedAccountLoginMessageIncludesTheConfiguredSupportNumber() {
+        User user = activeUser("CorrectHorse1!");
+        user.setStatus(UserStatus.BLOCKED);
+        when(userRepository.findByEmailOrPhone("test@example.com")).thenReturn(Optional.of(user));
+        when(platformSettingsService.getSupportPhoneNumber()).thenReturn("+911234567890");
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("test@example.com", "CorrectHorse1!")))
+                .isInstanceOf(AccountBlockedException.class)
+                .hasMessageContaining("+911234567890");
     }
 
     @Test
@@ -184,6 +198,31 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.refresh("revoked-token"))
                 .isInstanceOf(InvalidRefreshTokenException.class);
+    }
+
+    /**
+     * The actual gap this closes: an access token is a short-lived, database-blind JWT, so
+     * silently refreshing it on expiry used to be the one path still capable of handing a
+     * blocked account a brand new valid session indefinitely - see AuthService#refresh's own
+     * class doc.
+     */
+    @Test
+    void refreshRejectsABlockedAccountsToken() {
+        User user = activeUser("CorrectHorse1!");
+        user.setStatus(UserStatus.BLOCKED);
+        RefreshToken stored = RefreshToken.builder()
+                .user(user)
+                .tokenHash("irrelevant")
+                .expiresAt(java.time.Instant.now().plusSeconds(60))
+                .revoked(false)
+                .createdAt(java.time.Instant.now())
+                .build();
+        when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.refresh("some-still-valid-refresh-token"))
+                .isInstanceOf(AccountBlockedException.class);
+        // Not rotated/consumed - the whole point is this token grants nothing further.
+        verify(refreshTokenRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

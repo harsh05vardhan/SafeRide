@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Car, FileText, CheckCircle2, XCircle, Ban, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Car, FileText, CheckCircle2, XCircle, Ban, ShieldCheck, Star, MessageSquare } from "lucide-react";
 import { adminService } from "@/services/adminService";
 import { useToast } from "@/contexts/ToastContext";
 import { Button } from "@/components/common/Button";
@@ -72,7 +72,7 @@ export default function AdminDriverDetailPage() {
     );
   }
 
-  const { driver, vehicles, documents } = data;
+  const { driver, vehicles, documents, completedRideCount, cancelledRideCount, recentRatings } = data;
   const isBlocked = driver.accountStatus === "BLOCKED";
   const canApprove = driver.verificationStatus !== "VERIFIED";
 
@@ -98,10 +98,36 @@ export default function AdminDriverDetailPage() {
 
           <div className="my-4 border-t border-slate-100" />
 
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
+            <div>
+              <p className="text-xs text-muted">Rating</p>
+              <p className="flex items-center gap-1 font-semibold text-foreground">
+                <Star size={13} className="fill-primary text-primary" /> {driver.rating.toFixed(1)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Rides completed</p>
+              <p className="font-semibold text-success">{completedRideCount}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Rides cancelled</p>
+              <p className="font-semibold text-danger">{cancelledRideCount}</p>
+            </div>
             <div>
               <p className="text-xs text-muted">Reliability</p>
               <p className="font-semibold text-foreground">{driver.reliabilityScore.toFixed(0)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Acceptance rate</p>
+              <p className="font-semibold text-foreground">{driver.acceptanceRate.toFixed(0)}%</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Cancellation rate</p>
+              <p className="font-semibold text-foreground">{driver.cancellationRate.toFixed(0)}%</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Complaints</p>
+              <p className="font-semibold text-foreground">{driver.complaintCount}</p>
             </div>
             <div>
               <p className="text-xs text-muted">Online status</p>
@@ -145,6 +171,38 @@ export default function AdminDriverDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Feedback */}
+      <div>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-dark">
+          <MessageSquare size={16} /> Recent feedback
+        </h2>
+        {recentRatings.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">
+            No ratings yet.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {recentRatings.map((rating) => (
+              <div key={rating.rideId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        size={14}
+                        className={star <= rating.score ? "fill-primary text-primary" : "fill-transparent text-slate-300"}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted">{new Date(rating.createdAt).toLocaleDateString()}</p>
+                </div>
+                {rating.comment && <p className="mt-2 text-sm text-foreground">"{rating.comment}"</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Vehicles */}
       <div>

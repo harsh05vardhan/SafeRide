@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { ShieldCheck, LayoutDashboard, Car, MessageSquareWarning, Siren, BarChart3, Users, LogOut } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, Car, MessageSquareWarning, Siren, BarChart3, Users, Settings, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { to: "/admin/complaints", label: "Complaints", icon: MessageSquareWarning },
   { to: "/admin/safety", label: "Safety", icon: Siren },
   { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export function AdminNavbar() {

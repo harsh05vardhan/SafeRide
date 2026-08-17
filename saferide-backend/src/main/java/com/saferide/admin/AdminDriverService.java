@@ -10,6 +10,10 @@ import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.driver.DriverService;
 import com.saferide.driver.dto.DriverDocumentResponse;
+import com.saferide.matching.DriverGeoIndex;
+import com.saferide.rating.RatingService;
+import com.saferide.ride.RideRepository;
+import com.saferide.ride.TerminalRideStatuses;
 import com.saferide.user.UserService;
 import com.saferide.user.UserStatus;
 import com.saferide.user.dto.UserSummaryDTO;
@@ -18,6 +22,7 @@ import com.saferide.vehicle.dto.VehicleResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +44,9 @@ public class AdminDriverService {
     private final VehicleService vehicleService;
     private final DriverDocumentService documentService;
     private final AuditLogService auditLogService;
+    private final RideRepository rideRepository;
+    private final RatingService ratingService;
+    private final DriverGeoIndex geoIndex;
 
     @Transactional(readOnly = true)
     public Page<DriverAdminSummaryResponse> listDrivers(VerificationStatus statusFilter, Pageable pageable) {
@@ -53,7 +61,11 @@ public class AdminDriverService {
         Driver driver = driverService.getDriverById(driverId);
         List<VehicleResponse> vehicles = vehicleService.listForDriverId(driverId);
         List<DriverDocumentResponse> documents = documentService.listForDriverId(driverId);
-        return new DriverAdminDetailResponse(toSummary(driver), vehicles, documents);
+        long completedRideCount = rideRepository.countByDriverIdAndStatusIn(driverId, TerminalRideStatuses.COMPLETED);
+        long cancelledRideCount = rideRepository.countByDriverIdAndStatusIn(driverId, TerminalRideStatuses.CANCELLED);
+        var recentRatings = ratingService.listForDriver(driverId, PageRequest.of(0, 10));
+        return new DriverAdminDetailResponse(
+                toSummary(driver), vehicles, documents, completedRideCount, cancelledRideCount, recentRatings);
     }
 
     @Transactional
@@ -73,6 +85,10 @@ public class AdminDriverService {
         driver.setOnlineStatus(DriverOnlineStatus.OFFLINE);
         driver = driverRepository.save(driver);
         userService.updateStatus(driver.getUser().getId(), UserStatus.BLOCKED);
+        // Setting the DB column to OFFLINE alone isn't enough - matching reads candidates
+        // straight from the geo-index, not this column, so a driver who was online the moment
+        // they got blocked would otherwise stay a live matching candidate regardless.
+        geoIndex.removeDriver(driverId);
 
         auditLogService.record(adminUserId, "DRIVER_BLOCKED",
                 "Blocked driver #" + driverId + (reason == null || reason.isBlank() ? "" : ": " + reason));
@@ -126,6 +142,12 @@ public class AdminDriverService {
                 driver.getLicenseNumber(),
                 driver.getVerificationStatus(),
                 driver.getOnlineStatus(),
+                driver.getRating(),
+                driver.getAcceptanceRate(),
+                driver.getCancellationRate(),
+                driver.getCompletionRate(),
+                driver.getOnTimeRate(),
+                driver.getComplaintCount(),
                 driver.getReliabilityScore(),
                 driver.getCreatedAt());
     }

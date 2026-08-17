@@ -34,6 +34,7 @@ const AdminComplaintDetailPage = lazy(() => import("@/pages/admin/AdminComplaint
 const AdminSafetyPage = lazy(() => import("@/pages/admin/AdminSafetyPage"));
 const AdminAnalyticsPage = lazy(() => import("@/pages/admin/AdminAnalyticsPage"));
 const AdminUsersPage = lazy(() => import("@/pages/admin/AdminUsersPage"));
+const AdminSettingsPage = lazy(() => import("@/pages/admin/AdminSettingsPage"));
 
 const PublicTrackingPage = lazy(() => import("@/pages/PublicTrackingPage"));
 
@@ -106,6 +107,7 @@ export default function AppRoutes() {
             <Route path="/admin/safety" element={<AdminSafetyPage />} />
             <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/settings" element={<AdminSettingsPage />} />
           </Route>
         </Route>
 

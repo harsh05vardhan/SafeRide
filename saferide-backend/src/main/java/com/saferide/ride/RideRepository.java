@@ -45,6 +45,9 @@ public interface RideRepository extends JpaRepository<Ride, Long> {
     /** Admin analytics summary (Phase 13) - one query covers completed/cancelled/(by subtraction) active counts. */
     long countByStatusIn(Collection<RideStatus> statuses);
 
+    /** One driver's own completed/cancelled totals for the admin driver detail screen - same {@link TerminalRideStatuses} sets the platform-wide totals use. */
+    long countByDriverIdAndStatusIn(Long driverId, Collection<RideStatus> statuses);
+
     /** Ids only, not entities - {@code RideService#autoExpireStaleSearches} re-fetches and re-checks each one inside its own short transaction rather than holding a whole batch of entities across one long-running scheduled run. */
     @Query("select r.id from Ride r where r.status = :status and r.searchingSince < :cutoff")
     List<Long> findIdsByStatusAndSearchingSinceBefore(@Param("status") RideStatus status, @Param("cutoff") Instant cutoff);

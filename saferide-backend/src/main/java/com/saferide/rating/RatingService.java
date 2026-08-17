@@ -7,7 +7,9 @@ import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.rating.dto.RatingRequest;
 import com.saferide.rating.dto.RatingResponse;
 import com.saferide.ride.Ride;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +53,14 @@ public class RatingService {
         Rating rating = ratingRepository.findByRideId(rideId)
                 .orElseThrow(() -> new ResourceNotFoundException("No rating found for ride " + rideId));
         return toResponse(rating);
+    }
+
+    /** Most recent feedback a driver has received - admin driver detail screen, not paginated (a fixed recent window via {@code pageable}'s size is enough for that one screen). */
+    @Transactional(readOnly = true)
+    public List<RatingResponse> listForDriver(Long driverId, Pageable pageable) {
+        return ratingRepository.findByRide_Driver_IdOrderByCreatedAtDesc(driverId, pageable).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     private RatingResponse toResponse(Rating rating) {

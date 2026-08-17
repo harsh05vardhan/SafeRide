@@ -45,7 +45,10 @@ public class SecurityConfig {
         "/ws/**",
         // Deliberately unauthenticated (Phase 12) - a trip-share link is guarded only by
         // possessing its own unguessable token, never a login. See SafetyService's class doc.
-        "/api/public/**"
+        "/api/public/**",
+        // The support contact number must be readable by someone who isn't logged in yet -
+        // most importantly a just-blocked account failing right at the login screen.
+        "/api/settings/support-contact"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

@@ -10,12 +10,10 @@ import com.saferide.payment.PaymentRepository;
 import com.saferide.payment.PaymentStatus;
 import com.saferide.rating.RatingRepository;
 import com.saferide.ride.RideRepository;
-import com.saferide.ride.RideStatus;
+import com.saferide.ride.TerminalRideStatuses;
 import com.saferide.safety.SafetyAlertRepository;
 import com.saferide.safety.SafetyAlertStatus;
 import com.saferide.user.UserRepository;
-import java.util.EnumSet;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,11 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AdminAnalyticsService {
 
-    private static final Set<RideStatus> COMPLETED_STATUSES =
-            EnumSet.of(RideStatus.RIDE_COMPLETED, RideStatus.PAYMENT_PENDING, RideStatus.PAYMENT_COMPLETED, RideStatus.RATED);
-    private static final Set<RideStatus> CANCELLED_STATUSES =
-            EnumSet.of(RideStatus.CANCELLED, RideStatus.DRIVER_CANCELLED);
-
     private final RideRepository rideRepository;
     private final PaymentRepository paymentRepository;
     private final RatingRepository ratingRepository;
@@ -50,8 +43,8 @@ public class AdminAnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsSummaryResponse summary() {
         long totalRides = rideRepository.count();
-        long completedRides = rideRepository.countByStatusIn(COMPLETED_STATUSES);
-        long cancelledRides = rideRepository.countByStatusIn(CANCELLED_STATUSES);
+        long completedRides = rideRepository.countByStatusIn(TerminalRideStatuses.COMPLETED);
+        long cancelledRides = rideRepository.countByStatusIn(TerminalRideStatuses.CANCELLED);
         long activeRides = totalRides - completedRides - cancelledRides;
 
         return new AnalyticsSummaryResponse(

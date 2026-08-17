@@ -24,4 +24,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** {@code distinct} because a user with more than one role (e.g. CUSTOMER + DRIVER) would otherwise produce one row per matching role when the join fans out. */
     @Query("select distinct u from User u left join u.roles r where (:role is null or r.name = :role) order by u.createdAt desc")
     Page<User> findAllByOptionalRole(@Param("role") RoleName role, Pageable pageable);
+
+    /** Status only, not the full entity - {@code JwtAuthenticationFilter} calls this on every authenticated request, so it stays a single indexed-PK column read rather than hydrating (and lazy-relating) a whole User. */
+    @Query("select u.status from User u where u.id = :id")
+    Optional<UserStatus> findStatusById(@Param("id") Long id);
 }

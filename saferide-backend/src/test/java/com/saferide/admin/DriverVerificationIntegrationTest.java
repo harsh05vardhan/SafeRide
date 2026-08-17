@@ -6,8 +6,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saferide.matching.DriverGeoIndex;
 import com.saferide.testsupport.AbstractIntegrationTest;
 import com.saferide.user.RoleName;
 import com.saferide.user.UserService;
@@ -36,6 +39,7 @@ class DriverVerificationIntegrationTest extends AbstractIntegrationTest {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private UserService userService;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private DriverGeoIndex geoIndex;
 
     private String loginAndGetToken(String identifier, String password) throws Exception {
         String payload = "{\"identifier\":\"%s\",\"password\":\"%s\"}".formatted(identifier, password);
@@ -161,7 +165,7 @@ class DriverVerificationIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"identifier\":\"verify-driver@example.com\",\"password\":\"Password123!\"}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.code").value("ACCOUNT_BLOCKED"));
 
         // 10. Admin unblocks - login works again.
         mockMvc.perform(put("/api/admin/drivers/" + driverId + "/unblock")
@@ -172,6 +176,81 @@ class DriverVerificationIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"identifier\":\"verify-driver@example.com\",\"password\":\"Password123!\"}"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * Blocking a driver sets their DB {@code onlineStatus} to OFFLINE, but
+     * matching never reads that column directly - it asks
+     * {@link DriverGeoIndex} for candidates. Before this fix,
+     * {@code AdminDriverService#blockDriver} never removed the driver from
+     * the index, so an online driver blocked mid-shift would keep being a
+     * live matching candidate regardless of their account status.
+     */
+    @Test
+    void blockingAnOnlineDriverRemovesThemFromTheMatchingGeoIndex() throws Exception {
+        String adminToken = provisionAdminAndLogin("geo-admin@example.com", "9333300099");
+        String driverToken = registerDriverAndLogin("geo-driver@example.com", "9333300098", "DL-GEO-0001");
+
+        long driverId = approveAndVerifyMinimalDriver(adminToken, driverToken, "geo-driver@example.com", "AS-01-GEO-0001");
+
+        double lat = 25.5788;
+        double lng = 91.8933;
+        mockMvc.perform(put("/api/drivers/location")
+                        .header("Authorization", "Bearer " + driverToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"latitude\":%s,\"longitude\":%s}".formatted(lat, lng)))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/drivers/status")
+                        .header("Authorization", "Bearer " + driverToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"onlineStatus\":\"ONLINE\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(geoIndex.findWithinRadius(lat, lng, 5.0)).contains(driverId);
+
+        mockMvc.perform(put("/api/admin/drivers/" + driverId + "/block")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Suspected fraud\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(geoIndex.findWithinRadius(lat, lng, 5.0)).doesNotContain(driverId);
+    }
+
+    /** Registers, admin-approves the driver, and admin-verifies one vehicle for them - the minimum to become a real matching candidate once online. */
+    private long approveAndVerifyMinimalDriver(String adminToken, String driverToken, String driverEmail, String vehicleNumber)
+            throws Exception {
+        String listBody = mockMvc.perform(get("/api/admin/drivers")
+                        .param("status", "PENDING")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode list = objectMapper.readTree(listBody).at("/data/content");
+        long driverId = -1;
+        for (JsonNode node : list) {
+            if (node.at("/user/email").asText().equals(driverEmail)) {
+                driverId = node.at("/id").asLong();
+            }
+        }
+        assertThat(driverId).isPositive();
+
+        mockMvc.perform(put("/api/admin/drivers/" + driverId + "/approve").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        String vehiclePayload = """
+                {"vehicleType":"SEDAN","vehicleModel":"Honda City","vehicleNumber":"%s","vehicleColor":"Black","seatCapacity":4}
+                """.formatted(vehicleNumber);
+        String vehicleBody = mockMvc.perform(post("/api/vehicles")
+                        .header("Authorization", "Bearer " + driverToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(vehiclePayload))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long vehicleId = objectMapper.readTree(vehicleBody).at("/data/id").asLong();
+
+        mockMvc.perform(put("/api/admin/drivers/vehicles/" + vehicleId + "/approve").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        return driverId;
     }
 
     @Test

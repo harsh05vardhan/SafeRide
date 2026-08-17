@@ -4,12 +4,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link } from "react-router-dom";
-import { Car, FileText, LogOut, Plus, CheckCircle2, Clock, XCircle, ChevronRight, MessageSquareWarning } from "lucide-react";
+import { Car, FileText, LogOut, Plus, CheckCircle2, Clock, XCircle, ChevronRight, MessageSquareWarning, Phone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useDriverProfile } from "@/hooks/useDriverProfile";
 import { driverService } from "@/services/driverService";
 import { vehicleService } from "@/services/vehicleService";
+import { settingsService } from "@/services/settingsService";
 import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import { Label, FieldError } from "@/components/common/Label";
@@ -69,6 +70,7 @@ export default function DriverProfilePage() {
   // is off app-wide - see App.tsx).
   const { data: vehicles, isPending: vehiclesPending } = useQuery({ queryKey: ["vehicles"], queryFn: () => vehicleService.list(), refetchInterval: 15000 });
   const { data: documents, isPending: documentsPending } = useQuery({ queryKey: ["driver-documents"], queryFn: () => driverService.listDocuments(), refetchInterval: 15000 });
+  const { data: settings } = useQuery({ queryKey: ["settings", "support-contact"], queryFn: () => settingsService.getSupportContact() });
 
   const [showVehicleForm, setShowVehicleForm] = useState(false);
   const [showDocForm, setShowDocForm] = useState(false);
@@ -324,6 +326,25 @@ export default function DriverProfilePage() {
         </div>
         <ChevronRight size={16} className="text-muted" />
       </Link>
+
+      {/* Only shown once an admin has actually set a number - a fake/placeholder support line would be worse than none. */}
+      {settings?.supportPhoneNumber && (
+        <a
+          href={`tel:${settings.supportPhoneNumber}`}
+          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-dark">
+              <Phone size={16} />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-foreground">Need help? Call support</p>
+              <p className="text-xs text-muted">{settings.supportPhoneNumber}</p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="text-muted" />
+        </a>
+      )}
 
       <button
         onClick={() => void logout()}
