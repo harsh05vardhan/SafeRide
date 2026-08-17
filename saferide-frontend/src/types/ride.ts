@@ -27,6 +27,8 @@ export interface RideDriverInfo {
   vehicleColor: string | null;
 }
 
+export type RideCancellationReason = "CUSTOMER" | "DRIVER" | "NO_DRIVER_FOUND";
+
 export interface Ride {
   id: number;
   customer: UserSummary;
@@ -47,6 +49,10 @@ export interface Ride {
   startedAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
+  /** Only meaningful once status is CANCELLED/DRIVER_CANCELLED - "no driver was available in time" vs a customer/driver-initiated cancel. */
+  cancellationReason?: RideCancellationReason | null;
+  /** Only meaningful while status is SEARCHING_DRIVER - when the current search attempt started, so the countdown survives a page reload. */
+  searchingSince?: string | null;
 }
 
 export interface RideEstimateRequest {

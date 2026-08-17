@@ -20,6 +20,8 @@ import { ratingService } from "@/services/ratingService";
 import { safetyService } from "@/services/safetyService";
 import { useToast } from "@/contexts/ToastContext";
 import { useRideLocationChannel, useRideStatusChannel } from "@/hooks/useRideChannel";
+import { useCountdown } from "@/hooks/useCountdown";
+import { RIDE_SEARCH_TIMEOUT_SECONDS, formatCountdown } from "@/lib/rideSearch";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
@@ -32,6 +34,7 @@ import { FullPageSpinner } from "@/components/common/Spinner";
 import { RatingStars } from "@/components/ride/RatingStars";
 import { ShareRideDialog } from "@/components/ride/ShareRideDialog";
 import { ReportIssueDialog } from "@/components/ride/ReportIssueDialog";
+import { NoDriverFoundState } from "@/components/ride/NoDriverFoundState";
 import { extractErrorMessage } from "@/services/api";
 import { ACTIVE_TRACKING_STATUSES, type RideStatus } from "@/types/ride";
 
@@ -89,6 +92,14 @@ export default function RideTrackingPage() {
   useRideLocationChannel(Number(rideId) || undefined, (event) => {
     setDriverLocation({ latitude: event.latitude, longitude: event.longitude });
   });
+
+  // Relevant here (not just on FindingDriverPage) because a decline bounces the ride back to
+  // SEARCHING_DRIVER while the customer is already on this page - they never get sent back to
+  // FindingDriverPage for a re-search, so this page needs its own copy of the same countdown.
+  const secondsLeft = useCountdown(
+    ride?.status === "SEARCHING_DRIVER" ? ride.searchingSince : null,
+    RIDE_SEARCH_TIMEOUT_SECONDS,
+  );
 
   async function cancelRide() {
     if (!rideId) return;
@@ -185,6 +196,9 @@ export default function RideTrackingPage() {
   const center: [number, number] = [ride.pickupLatitude, ride.pickupLongitude];
 
   if (isCancelled) {
+    if (ride.cancellationReason === "NO_DRIVER_FOUND") {
+      return <NoDriverFoundState />;
+    }
     return (
       <div className="mx-auto flex max-w-md flex-col items-center px-4 py-16 text-center">
         <XCircle size={48} className="mb-3 text-danger" />
@@ -299,6 +313,7 @@ export default function RideTrackingPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-4">
         <Badge variant="dark" className="pointer-events-auto">
           {STATUS_LABEL[ride.status]}
+          {secondsLeft !== null && ` · ${formatCountdown(secondsLeft)} left`}
         </Badge>
         {canSendSafetySignals && (
           <button

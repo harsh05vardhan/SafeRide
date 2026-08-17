@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * SafeRide backend entry point.
@@ -31,10 +32,15 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * forwarding a domain event to Kafka runs on a background thread so a
  * slow or unreachable broker can never add latency to the request that
  * triggered it, let alone fail it.
+ *
+ * <p>{@link EnableScheduling} backs {@code RideService#autoExpireStaleSearches} -
+ * the periodic sweep that gives up on a ride still searching for a driver
+ * past its timeout.
  */
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableSpringDataWebSupport(pageSerializationMode = PageSerializationMode.VIA_DTO)
 @EnableAsync
+@EnableScheduling
 public class SafeRideApplication {
 
     public static void main(String[] args) {

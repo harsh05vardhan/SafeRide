@@ -1,11 +1,15 @@
 package com.saferide.ride;
 
 import com.saferide.vehicle.VehicleType;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface RideRepository extends JpaRepository<Ride, Long> {
 
@@ -40,4 +44,8 @@ public interface RideRepository extends JpaRepository<Ride, Long> {
 
     /** Admin analytics summary (Phase 13) - one query covers completed/cancelled/(by subtraction) active counts. */
     long countByStatusIn(Collection<RideStatus> statuses);
+
+    /** Ids only, not entities - {@code RideService#autoExpireStaleSearches} re-fetches and re-checks each one inside its own short transaction rather than holding a whole batch of entities across one long-running scheduled run. */
+    @Query("select r.id from Ride r where r.status = :status and r.searchingSince < :cutoff")
+    List<Long> findIdsByStatusAndSearchingSinceBefore(@Param("status") RideStatus status, @Param("cutoff") Instant cutoff);
 }

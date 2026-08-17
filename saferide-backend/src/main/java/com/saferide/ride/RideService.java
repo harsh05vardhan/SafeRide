@@ -22,6 +22,7 @@ import com.saferide.map.MapService;
 import com.saferide.map.RouteEstimate;
 import com.saferide.matching.DriverMatchingService;
 import com.saferide.matching.ExclusionReason;
+import com.saferide.matching.MatchingProperties;
 import com.saferide.payment.PaymentService;
 import com.saferide.payment.dto.PaymentResponse;
 import com.saferide.rating.RatingService;
@@ -44,10 +45,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -104,6 +107,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RideService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -116,6 +120,7 @@ public class RideService {
     private final VehicleService vehicleService;
     private final FareService fareService;
     private final DriverMatchingService matchingService;
+    private final MatchingProperties matchingProperties;
     private final DriverReliabilityService reliabilityService;
     private final RideEventPublisher eventPublisher;
     private final PaymentService paymentService;
@@ -190,6 +195,7 @@ public class RideService {
 
         if (ride.getStatus() == RideStatus.REQUESTED) {
             transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+            ride.setSearchingSince(Instant.now());
             attemptAutoAssign(ride);
             rideRepository.save(ride);
             eventPublisher.publishStatusChange(ride);
@@ -340,6 +346,7 @@ public class RideService {
 
         ride.setDriver(null);
         transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+        ride.setSearchingSince(Instant.now());
         attemptAutoAssign(ride);
 
         Ride saved = rideRepository.save(ride);
@@ -399,6 +406,7 @@ public class RideService {
         if (isCustomer) {
             transitionTo(ride, RideStatus.CANCELLED);
             ride.setCancelledAt(Instant.now());
+            ride.setCancellationReason(RideCancellationReason.CUSTOMER);
         } else if (isAssignedDriver) {
             Driver cancellingDriver = ride.getDriver();
             matchingService.recordExclusion(ride, cancellingDriver, ExclusionReason.CANCELLED);
@@ -406,10 +414,12 @@ public class RideService {
 
             transitionTo(ride, RideStatus.DRIVER_CANCELLED);
             ride.setCancelledAt(Instant.now());
+            ride.setCancellationReason(RideCancellationReason.DRIVER);
 
             // Automatic reassignment: don't make the customer start over - continue the same request.
             ride.setDriver(null);
             transitionTo(ride, RideStatus.SEARCHING_DRIVER);
+            ride.setSearchingSince(Instant.now());
             attemptAutoAssign(ride);
         } else {
             throw new UnauthorizedException("This ride does not belong to you");
@@ -491,6 +501,51 @@ public class RideService {
         Driver driver = driverService.getDriverByUserId(driverUserId);
         return rideRepository.findFirstByDriverIdAndStatusIn(driver.getId(), ActiveRideStatuses.DRIVER)
                 .map(Ride::getId);
+    }
+
+    /**
+     * Runs every 10s and gives up on any ride that's been at
+     * {@code SEARCHING_DRIVER} - the initial search, or a fresh one after
+     * a decline/driver cancellation re-armed {@code searchingSince} - for
+     * longer than {@code app.matching.search-timeout-seconds} (default
+     * 60s). Matches what the customer's own FindingDriverPage/
+     * RideTrackingPage countdown promises: find a driver in a minute, or
+     * the ride auto-cancels with a "no one was available" reason instead
+     * of leaving the customer staring at a spinner forever.
+     *
+     * <p>Only fetches ids here, then re-validates and cancels each one in
+     * its own short transaction ({@link #autoExpireOne}) - a ride that got
+     * assigned or cancelled by someone else in the moment between this
+     * query and that transaction just gets silently skipped by its own
+     * re-check, rather than this method holding one long transaction (or a
+     * stale batch of entities) across every stale ride in the system.
+     */
+    @Scheduled(fixedDelay = 10_000)
+    public void autoExpireStaleSearches() {
+        Instant cutoff = Instant.now().minusSeconds(matchingProperties.getSearchTimeoutSeconds());
+        List<Long> staleRideIds = rideRepository.findIdsByStatusAndSearchingSinceBefore(RideStatus.SEARCHING_DRIVER, cutoff);
+        for (Long rideId : staleRideIds) {
+            try {
+                autoExpireOne(rideId);
+            } catch (Exception e) {
+                log.warn("Failed to auto-expire ride {} after search timeout", rideId, e);
+            }
+        }
+    }
+
+    @Transactional
+    void autoExpireOne(Long rideId) {
+        Ride ride = rideRepository.findById(rideId).orElse(null);
+        // Re-check under this method's own transaction: findBestDriver/an accept could have
+        // moved the ride on between the scheduler's lookup query and here.
+        if (ride == null || ride.getStatus() != RideStatus.SEARCHING_DRIVER) {
+            return;
+        }
+        transitionTo(ride, RideStatus.CANCELLED);
+        ride.setCancelledAt(Instant.now());
+        ride.setCancellationReason(RideCancellationReason.NO_DRIVER_FOUND);
+        Ride saved = rideRepository.save(ride);
+        eventPublisher.publishStatusChange(saved);
     }
 
     /** Tries to proactively assign the best eligible driver; leaves the ride at SEARCHING_DRIVER (fallback: {@link #listOpenRides}) if nobody qualifies. */
@@ -601,6 +656,8 @@ public class RideService {
                 ride.getAcceptedAt(),
                 ride.getStartedAt(),
                 ride.getCompletedAt(),
-                ride.getCancelledAt());
+                ride.getCancelledAt(),
+                ride.getCancellationReason(),
+                ride.getSearchingSince());
     }
 }

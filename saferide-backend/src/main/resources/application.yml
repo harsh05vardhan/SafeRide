@@ -96,6 +96,9 @@ app:
     max-radius-km: 5.0
     max-eta-minutes: 15.0
     average-speed-kmh: 25.0
+    # How long a ride may sit at SEARCHING_DRIVER before it's auto-cancelled as "no driver
+    # available" - matches FindingDriverPage/RideTrackingPage's own countdown on the frontend.
+    search-timeout-seconds: ${MATCHING_SEARCH_TIMEOUT_SECONDS:60}
     # "redis" (default): DriverMatchingService gets candidates from a Redis geo-index -
     # see RedisDriverGeoIndex. "sql": falls back to the pre-Phase-11 full table scan
     # (SqlDriverGeoIndex) - a legitimate no-Redis deployment option; also what

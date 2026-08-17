@@ -107,6 +107,21 @@ public class Ride extends Auditable {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason", length = 20)
+    private RideCancellationReason cancellationReason;
+
+    /**
+     * Set every time the ride (re-)enters {@code SEARCHING_DRIVER} - the
+     * initial search via {@code confirmFare}, and again after every
+     * {@code declineRide}/driver cancellation reassignment. Read by
+     * {@code RideService#autoExpireStaleSearches} to auto-cancel a ride
+     * that's been searching too long, and echoed to the customer so their
+     * UI can show an accurate countdown rather than guessing.
+     */
+    @Column(name = "searching_since")
+    private Instant searchingSince;
+
     @Version
     private Long version;
 }

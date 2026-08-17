@@ -6,6 +6,8 @@ import { Search, X } from "lucide-react";
 import { rideService } from "@/services/rideService";
 import { useToast } from "@/contexts/ToastContext";
 import { useRideStatusChannel } from "@/hooks/useRideChannel";
+import { useCountdown } from "@/hooks/useCountdown";
+import { RIDE_SEARCH_TIMEOUT_SECONDS, formatCountdown } from "@/lib/rideSearch";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
@@ -14,6 +16,7 @@ import { Button } from "@/components/common/Button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { extractErrorMessage } from "@/services/api";
 import { FullPageSpinner } from "@/components/common/Spinner";
+import { NoDriverFoundState } from "@/components/ride/NoDriverFoundState";
 
 /** Fallback cadence in case the WebSocket connection is down/reconnecting - the real-time push via useRideStatusChannel below is what normally moves this page along within a second or two of a match. */
 const POLL_INTERVAL_MS = 8000;
@@ -37,15 +40,32 @@ export default function FindingDriverPage() {
     void queryClient.invalidateQueries({ queryKey: ["ride", rideId] });
   });
 
+  const secondsLeft = useCountdown(
+    ride?.status === "SEARCHING_DRIVER" ? ride.searchingSince : null,
+    RIDE_SEARCH_TIMEOUT_SECONDS,
+  );
+
   useEffect(() => {
     if (!ride) return;
     if (ride.status === "DRIVER_ASSIGNED" || ride.status === "DRIVER_ACCEPTED") {
       navigate(`/ride/${ride.id}`, { replace: true });
-    } else if (ride.status === "CANCELLED" || ride.status === "DRIVER_CANCELLED") {
+    } else if (ride.status === "DRIVER_CANCELLED" || (ride.status === "CANCELLED" && ride.cancellationReason !== "NO_DRIVER_FOUND")) {
       showToast("This ride was cancelled.", "info");
       navigate("/home", { replace: true });
     }
+    // CANCELLED with reason NO_DRIVER_FOUND is handled by the render below instead of an
+    // immediate redirect - a plain toast is too easy to miss for something the customer needs
+    // to actually notice and act on (try booking again).
   }, [ride, navigate, showToast]);
+
+  if (ride?.status === "CANCELLED" && ride.cancellationReason === "NO_DRIVER_FOUND") {
+    // No CustomerLayout chrome on this route - center the message in the full viewport ourselves.
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <NoDriverFoundState />
+      </div>
+    );
+  }
 
   async function cancelRide() {
     if (!rideId) return;
@@ -95,7 +115,9 @@ export default function FindingDriverPage() {
           </motion.span>
           <div>
             <p className="text-sm font-bold text-dark">Finding your driver</p>
-            <p className="text-xs text-muted">Looking for the best driver near you</p>
+            <p className="text-xs text-muted">
+              {secondsLeft !== null ? `Looking nearby - ${formatCountdown(secondsLeft)} left` : "Looking for the best driver near you"}
+            </p>
           </div>
         </motion.div>
       </div>

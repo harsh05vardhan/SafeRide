@@ -27,4 +27,7 @@ public class MatchingProperties {
 
     /** Assumed average speed used only to turn distance into an ETA for scoring - independent of MapService's own estimate. */
     private double averageSpeedKmh;
+
+    /** How long a ride may sit at SEARCHING_DRIVER (the initial search, or a fresh one after a decline/driver-cancellation) before {@code RideService#autoExpireStaleSearches} gives up and auto-cancels it. */
+    private long searchTimeoutSeconds;
 }
