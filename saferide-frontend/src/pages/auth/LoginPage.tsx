@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
-import { ShieldCheck, Lock, Users, Zap, LifeBuoy, User, KeyRound, Eye, EyeOff, ArrowRight, ShieldHalf } from "lucide-react";
+import { ShieldCheck, User, KeyRound, Eye, EyeOff, ArrowRight, ShieldHalf } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { Button } from "@/components/common/Button";
@@ -11,13 +11,7 @@ import { Input } from "@/components/common/Input";
 import { Label, FieldError } from "@/components/common/Label";
 import { extractErrorMessage } from "@/services/api";
 import { loginSchema, type LoginFormValues } from "@/lib/validation";
-
-const FEATURES = [
-  { icon: Lock, title: "Fare Lock Guarantee", description: "No extra charges. Ever." },
-  { icon: Users, title: "Trusted Drivers", description: "Verified and highly rated." },
-  { icon: Zap, title: "Instant Matching", description: "Smart algorithm for faster rides." },
-  { icon: LifeBuoy, title: "Safety First", description: "SOS and trip sharing." },
-];
+import { SAFERIDE_FEATURES } from "@/lib/features";
 
 /** Small inline brand marks - not worth a whole icon-library dependency for three static logos. */
 function GoogleMark() {
@@ -122,7 +116,7 @@ export default function LoginPage() {
         </motion.div>
 
         <div className="relative z-10 space-y-3">
-          {FEATURES.map(({ icon: Icon, title, description }, i) => (
+          {SAFERIDE_FEATURES.map(({ icon: Icon, title, description }, i) => (
             <motion.div
               key={title}
               className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur"

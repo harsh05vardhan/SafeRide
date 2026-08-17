@@ -17,6 +17,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { rideService } from "@/services/rideService";
 import { extractErrorMessage } from "@/services/api";
 import { SUGGESTED_LOCATIONS, MAP_DEFAULT_CENTER } from "@/lib/suggestedLocations";
+import { SAFERIDE_FEATURES } from "@/lib/features";
 import type { RideStatus } from "@/types/ride";
 
 const STATUS_VARIANT: Record<RideStatus, "success" | "danger" | "neutral" | "primary"> = {
@@ -224,6 +225,21 @@ export default function HomePage() {
             )}
           </MapView>
         </div>
+      </div>
+
+      {/* Same pitch as the login page, reused rather than reinvented - see lib/features.ts. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {SAFERIDE_FEATURES.map(({ icon: Icon, title, description }) => (
+          <div key={title} className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-dark">
+              <Icon size={16} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-foreground">{title}</p>
+              <p className="truncate text-[11px] text-muted">{description}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Recent rides */}
