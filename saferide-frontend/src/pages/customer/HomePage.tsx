@@ -130,6 +130,7 @@ export default function HomePage() {
           <p className="text-sm text-muted">Hello, {firstName} 👋</p>
           <h1 className="mt-1 text-2xl font-extrabold leading-tight text-dark sm:text-3xl">Where are you going?</h1>
           <p className="mt-2 text-sm text-muted">Book a safe, reliable and affordable ride in seconds.</p>
+          <p className="mt-3 font-serif text-base italic text-dark/70">Rides for a better Guwahati</p>
         </div>
       </div>
 

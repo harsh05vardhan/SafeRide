@@ -18,6 +18,7 @@ const RideTrackingPage = lazy(() => import("@/pages/customer/RideTrackingPage"))
 const MyRidesPage = lazy(() => import("@/pages/customer/MyRidesPage"));
 const ProfilePage = lazy(() => import("@/pages/customer/ProfilePage"));
 const MyComplaintsPage = lazy(() => import("@/pages/customer/MyComplaintsPage"));
+const SafetyCenterPage = lazy(() => import("@/pages/customer/SafetyCenterPage"));
 
 const DriverDashboardPage = lazy(() => import("@/pages/driver/DriverDashboardPage"));
 const DriverRidesPage = lazy(() => import("@/pages/driver/DriverRidesPage"));
@@ -72,6 +73,7 @@ export default function AppRoutes() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/ride/:rideId" element={<RideTrackingPage />} />
             <Route path="/rides" element={<MyRidesPage />} />
+            <Route path="/safety" element={<SafetyCenterPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/complaints" element={<MyComplaintsPage />} />
           </Route>
