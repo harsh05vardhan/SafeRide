@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { ShieldCheck, Home, Clock, User, LogOut } from "lucide-react";
+import { ShieldCheck, Home, Clock, User, LogOut, MessageSquareWarning } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const NAV_LINKS = [
   { to: "/home", label: "Home", icon: Home },
   { to: "/rides", label: "My Rides", icon: Clock },
+  { to: "/complaints", label: "Reports", icon: MessageSquareWarning },
   { to: "/profile", label: "Profile", icon: User },
 ];
 
@@ -65,14 +66,17 @@ export function MobileBottomNav() {
           key={to}
           to={to}
           className={({ isActive }) =>
-            cn(
-              "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium",
-              isActive ? "text-dark" : "text-muted",
-            )
+            cn("flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium", isActive ? "text-dark" : "text-muted")
           }
         >
-          <Icon size={20} />
-          {label}
+          {({ isActive }) => (
+            <>
+              <span className={cn("flex h-7 w-11 items-center justify-center rounded-full transition-colors", isActive && "bg-primary/20")}>
+                <Icon size={18} />
+              </span>
+              {label}
+            </>
+          )}
         </NavLink>
       ))}
     </nav>

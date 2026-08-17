@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, Car, ChevronRight, MapPin, Search } from "lucide-react";
+import { ArrowLeftRight, Car, ChevronRight, MapPin, Plane, Search, ShoppingBag, Store, TrainFront } from "lucide-react";
 import { LocationPicker } from "@/components/ride/LocationPicker";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
@@ -47,6 +47,15 @@ const STATUS_LABEL: Record<RideStatus, string> = {
   RATED: "Completed",
   CANCELLED: "Cancelled",
   DRIVER_CANCELLED: "Cancelled",
+};
+
+/** One icon per curated landmark - purely cosmetic, keyed by label since SUGGESTED_LOCATIONS has no category field of its own. */
+const PLACE_ICON: Record<string, typeof MapPin> = {
+  "Guwahati Railway Station": TrainFront,
+  "Fancy Bazar": ShoppingBag,
+  Dispur: Store,
+  Panbazar: ShoppingBag,
+  "Guwahati Airport": Plane,
 };
 
 export default function HomePage() {
@@ -111,9 +120,16 @@ export default function HomePage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
-      <div>
-        <p className="text-sm text-muted">Hello, {firstName} 👋</p>
-        <h1 className="text-2xl font-extrabold text-dark sm:text-3xl">Where are you going?</h1>
+      {/* Header band */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/20 via-primary/5 to-white p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-6 -top-6 flex h-32 w-32 items-center justify-center rounded-full bg-primary/25 sm:right-4 sm:top-4 sm:h-40 sm:w-40">
+          <Car size={64} className="text-dark/60" />
+        </div>
+        <div className="relative max-w-xs">
+          <p className="text-sm text-muted">Hello, {firstName} 👋</p>
+          <h1 className="mt-1 text-2xl font-extrabold leading-tight text-dark sm:text-3xl">Where are you going?</h1>
+          <p className="mt-2 text-sm text-muted">Book a safe, reliable and affordable ride in seconds.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr] lg:items-start">
@@ -153,26 +169,26 @@ export default function HomePage() {
             {pinTarget ? `Tap the map to set your ${pinTarget}…` : "Or drop a pin on the map instead"}
           </button>
 
-          {/* Suggested places - one tap fills whichever field is still empty, no need to open the picker dropdown first. */}
+          {/* Suggested places - horizontal, tap to fill whichever field is still empty. */}
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Suggested places</p>
-            <div className="mt-2 space-y-1.5">
-              {SUGGESTED_LOCATIONS.slice(0, 3).map((location) => (
-                <button
-                  key={location.label}
-                  type="button"
-                  onClick={() => pickSuggestion(location)}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-slate-50"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-muted">
-                    <MapPin size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">{location.label}</span>
-                    <span className="block truncate text-xs text-muted">{location.address}</span>
-                  </span>
-                </button>
-              ))}
+            <div className="mt-2 flex gap-2.5 overflow-x-auto pb-1">
+              {SUGGESTED_LOCATIONS.map((location) => {
+                const Icon = PLACE_ICON[location.label] ?? MapPin;
+                return (
+                  <button
+                    key={location.label}
+                    type="button"
+                    onClick={() => pickSuggestion(location)}
+                    className="flex w-24 shrink-0 flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-center transition-colors hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-dark">
+                      <Icon size={16} />
+                    </span>
+                    <span className="line-clamp-2 text-[11px] font-medium leading-tight text-foreground">{location.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -197,7 +213,7 @@ export default function HomePage() {
         </motion.div>
 
         {/* Map (desktop) */}
-        <div className="hidden h-[calc(100vh-13rem)] overflow-hidden rounded-2xl border border-slate-200 shadow-sm lg:block">
+        <div className="hidden h-[calc(100vh-16rem)] overflow-hidden rounded-2xl border border-slate-200 shadow-sm lg:block">
           <MapView center={center} onMapClick={pinTarget ? handleMapClick : undefined}>
             {pickup && <PickupMarker latitude={pickup.latitude} longitude={pickup.longitude} address={pickup.address} />}
             {destination && (
@@ -237,8 +253,8 @@ export default function HomePage() {
                 to={`/ride/${ride.id}`}
                 className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-dark">
-                  <Car size={17} />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-dark">
+                  {ride.driver ? ride.driver.name.charAt(0) : <Car size={17} />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{ride.pickupAddress}</p>
