@@ -225,7 +225,10 @@ export default function DriverRideDetailPage() {
   const canCancel = ride.status === "DRIVER_ACCEPTED" || ride.status === "DRIVER_ARRIVED";
 
   return (
-    <div className="relative h-[calc(100vh-4rem)] w-full">
+    // No DriverLayout wrapper on this route (see AppRoutes) - no navbar, no bottom nav, so this
+    // page owns the entire viewport; h-screen is correct here, not a calc() subtracting chrome
+    // that isn't actually there.
+    <div className="relative h-screen w-full">
       <MapView center={center} zoom={14} className="absolute inset-0">
         <PickupMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} address={ride.pickupAddress} />
         <DestinationMarker latitude={ride.destinationLatitude} longitude={ride.destinationLongitude} address={ride.destinationAddress} />

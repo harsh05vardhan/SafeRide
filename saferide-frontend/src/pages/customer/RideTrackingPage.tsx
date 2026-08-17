@@ -279,7 +279,13 @@ export default function RideTrackingPage() {
   }
 
   return (
-    <div className="relative h-[calc(100vh-4rem)] w-full">
+    // absolute inset-0 (not a hardcoded 100vh-4rem calc) so this fills exactly what
+    // CustomerLayout's <main> actually reserves for it - the navbar's height *and* the mobile
+    // bottom nav's own pb-16 padding, both automatically, without duplicating either value
+    // here. A hardcoded calc only accounting for the navbar left this page's own bottom action
+    // row (Share Ride/Cancel) rendered below the visible viewport on mobile, hidden under the
+    // fixed bottom nav - the real cause behind "no cancel option" reports, not a logic bug.
+    <div className="absolute inset-0 w-full">
       <MapView center={center} zoom={14} className="absolute inset-0">
         <PickupMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} address={ride.pickupAddress} />
         <DestinationMarker latitude={ride.destinationLatitude} longitude={ride.destinationLongitude} address={ride.destinationAddress} />
