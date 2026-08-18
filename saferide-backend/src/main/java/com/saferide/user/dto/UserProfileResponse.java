@@ -13,5 +13,6 @@ public record UserProfileResponse(
         String phone,
         UserStatus status,
         Set<RoleName> roles,
+        String avatarUrl,
         Instant createdAt) {
 }

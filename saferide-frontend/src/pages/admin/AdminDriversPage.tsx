@@ -8,6 +8,7 @@ import { Button } from "@/components/common/Button";
 import { Skeleton } from "@/components/common/Skeleton";
 import { EmptyState, ErrorState } from "@/components/common/StateViews";
 import { VerificationBadge, AccountStatusBadge } from "@/components/admin/StatusBadges";
+import { Avatar } from "@/components/common/Avatar";
 import { cn } from "@/lib/utils";
 import type { VerificationStatus } from "@/types/common";
 
@@ -89,8 +90,13 @@ export default function AdminDriversPage() {
               {data!.content.map((driver) => (
                 <tr key={driver.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{driver.user.name}</p>
-                    <p className="text-xs text-muted">{driver.user.email}</p>
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={driver.user.name} avatarUrl={driver.user.avatarUrl} size={30} />
+                      <div>
+                        <p className="font-medium text-foreground">{driver.user.name}</p>
+                        <p className="text-xs text-muted">{driver.user.email}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-foreground">{driver.licenseNumber}</td>
                   <td className="px-4 py-3 text-foreground">{driver.reliabilityScore.toFixed(0)}</td>

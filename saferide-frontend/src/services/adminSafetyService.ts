@@ -15,4 +15,9 @@ export const adminSafetyService = {
     const response = await api.put<ApiResponse<SafetyAlert>>(`/admin/safety/alerts/${alertId}/resolve`, { notes });
     return response.data.data;
   },
+
+  /** Only a RESOLVED alert can be deleted - the backend refuses an ACTIVE one outright. */
+  async delete(alertId: number): Promise<void> {
+    await api.delete(`/admin/safety/alerts/${alertId}`);
+  },
 };

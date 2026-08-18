@@ -67,6 +67,10 @@ public class User extends Auditable {
     @Column(nullable = false, length = 20)
     private UserStatus status = UserStatus.ACTIVE;
 
+    /** A link to a hosted photo, same "paste a URL" pattern as DriverDocument.documentUrl - no cloud file storage is wired up yet, so this is honest about what it actually is rather than pretending to be a real upload. Null shows an initial-letter avatar instead. */
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "user_roles",

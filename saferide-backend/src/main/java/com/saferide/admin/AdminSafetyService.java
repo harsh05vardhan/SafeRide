@@ -58,6 +58,25 @@ public class AdminSafetyService {
         return toResponse(saved);
     }
 
+    /**
+     * Only ever a RESOLVED alert - an ACTIVE one must never be able to
+     * simply disappear (that's what {@link #resolve} is for, and it
+     * leaves a record of the outcome). A hard delete, unlike the soft
+     * deletes elsewhere in the app: nothing else references a
+     * SafetyAlert row the way rides/payments reference a User, so there's
+     * no history to protect by keeping it around.
+     */
+    @Transactional
+    public void delete(Long adminUserId, Long alertId) {
+        SafetyAlert alert = safetyAlertRepository.findById(alertId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Safety alert", alertId));
+        if (alert.getStatus() != SafetyAlertStatus.RESOLVED) {
+            throw new InvalidSafetyAlertStateException("Only a resolved alert can be deleted");
+        }
+        safetyAlertRepository.delete(alert);
+        auditLogService.record(adminUserId, alert.getRide().getId(), "SAFETY_ALERT_DELETED", "Deleted resolved SOS alert #" + alertId);
+    }
+
     private SafetyAlertResponse toResponse(SafetyAlert alert) {
         return SafetyAlertResponse.from(alert, rideDriverInfoFactory.from(alert.getRide()));
     }

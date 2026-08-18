@@ -8,5 +8,6 @@ public record RideDriverInfo(
         Double rating,
         String vehicleModel,
         String vehicleNumber,
-        String vehicleColor) {
+        String vehicleColor,
+        String avatarUrl) {
 }

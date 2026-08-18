@@ -3,6 +3,7 @@ import type { VerificationStatus } from "./common";
 import type { DriverOnlineStatus } from "./driver";
 import type { DriverDocument } from "./driver";
 import type { Rating } from "./rating";
+import type { RideDriverInfo, RideStatus } from "./ride";
 import type { Vehicle } from "./vehicle";
 
 /** Mirrors the backend's DriverAdminSummaryResponse - what an admin sees in the drivers list. */
@@ -35,7 +36,28 @@ export interface DriverAdminDetail {
   documents: DriverDocument[];
   completedRideCount: number;
   cancelledRideCount: number;
+  totalEarnings: number;
   recentRatings: Rating[];
+}
+
+/** Mirrors TopDriverResponse - the admin dashboard's "top rated drivers" leaderboard. */
+export interface TopDriver {
+  driverId: number;
+  name: string;
+  avatarUrl?: string | null;
+  rating: number;
+  completedRideCount: number;
+}
+
+/** Mirrors AdminRideSummaryResponse - the admin dashboard's "recent rides" list. */
+export interface AdminRideSummary {
+  id: number;
+  customer: UserSummary;
+  driver: RideDriverInfo | null;
+  pickupAddress: string;
+  destinationAddress: string;
+  status: RideStatus;
+  createdAt: string;
 }
 
 export interface AdminActionRequest {

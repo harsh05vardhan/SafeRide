@@ -6,6 +6,8 @@ export interface UserSummary {
   email: string;
   phone: string;
   roles: RoleName[];
+  // Jackson omits this when unset rather than sending an explicit null.
+  avatarUrl?: string | null;
 }
 
 export interface AuthResponse {
@@ -39,6 +41,7 @@ export interface UserProfile {
   phone: string;
   status: UserStatus;
   roles: RoleName[];
+  avatarUrl?: string | null;
   createdAt: string;
 }
 

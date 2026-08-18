@@ -14,6 +14,8 @@ interface AuthContextValue {
   login: (request: LoginRequest) => Promise<void>;
   register: (request: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
+  /** Patches the cached user in place (e.g. after changing the avatar) - no re-login needed for the Navbar/UserMenu to reflect it immediately. */
+  updateUser: (patch: Partial<UserSummary>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -38,6 +40,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate("/login", { replace: true });
   }, [navigate]);
 
+  const updateUser = useCallback((patch: Partial<UserSummary>) => {
+    setUser((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      tokenStorage.setUser(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     function handleSessionExpired() {
       tokenStorage.clear();
@@ -58,8 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       logout,
+      updateUser,
     }),
-    [user, login, register, logout],
+    [user, login, register, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

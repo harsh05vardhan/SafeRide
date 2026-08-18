@@ -36,6 +36,10 @@ export const tokenStorage = {
   setAccessToken(accessToken: string) {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   },
+  /** Persists an in-place edit to the cached user (e.g. a new avatar) - doesn't touch either token. */
+  setUser(user: UserSummary) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  },
   clear() {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);

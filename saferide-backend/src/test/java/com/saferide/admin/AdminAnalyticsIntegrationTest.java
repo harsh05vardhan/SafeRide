@@ -173,4 +173,39 @@ class AdminAnalyticsIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/admin/analytics/summary").header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isForbidden());
     }
+
+    /** Dashboard's "recent rides" (newest first) and "top rated drivers" (verified only, ranked by real rating). */
+    @Test
+    void recentRidesAndTopDriversReflectRealData() throws Exception {
+        String adminToken = provisionAdminAndLogin("dashboard-admin@example.com", "9611100005");
+        String customerToken = registerCustomer("dashboard-customer@example.com", "9611100006");
+        String driverToken = readyDriver("dashboard-driver@example.com", "9611100007", "DL-DASHBOARD-1", "DASHBOARD-VEH-01", adminToken);
+
+        String createBody = mockMvc.perform(post("/api/rides")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"pickupAddress":"MG Road","destinationAddress":"Whitefield",
+                                 "pickupLatitude":%s,"pickupLongitude":%s,
+                                 "destinationLatitude":12.9698,"destinationLongitude":77.7500,"vehicleType":"SEDAN"}
+                                """.formatted(PICKUP_LAT, PICKUP_LNG)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long rideId = objectMapper.readTree(createBody).at("/data/id").asLong();
+        mockMvc.perform(post("/api/rides/" + rideId + "/fare/confirm").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk());
+
+        String recentRides = mockMvc.perform(get("/api/admin/analytics/recent-rides").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        JsonNode rides = objectMapper.readTree(recentRides).at("/data");
+        assertThat(rides.get(0).at("/id").asLong()).isEqualTo(rideId); // newest first
+        assertThat(rides.get(0).at("/customer/email").asText()).isEqualTo("dashboard-customer@example.com");
+        assertThat(rides.get(0).at("/driver/name").asText()).isEqualTo("Analytics Driver");
+
+        String topDrivers = mockMvc.perform(get("/api/admin/analytics/top-drivers").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(topDrivers).at("/data").findValuesAsText("name")).contains("Analytics Driver");
+    }
 }

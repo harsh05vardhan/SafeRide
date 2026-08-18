@@ -19,5 +19,6 @@ public record DriverAdminDetailResponse(
         List<DriverDocumentResponse> documents,
         Long completedRideCount,
         Long cancelledRideCount,
+        Double totalEarnings,
         List<RatingResponse> recentRatings) {
 }

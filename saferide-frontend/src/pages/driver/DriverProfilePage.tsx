@@ -17,6 +17,7 @@ import { Label, FieldError } from "@/components/common/Label";
 import { Badge } from "@/components/common/Badge";
 import { Skeleton } from "@/components/common/Skeleton";
 import { Card, CardBody } from "@/components/common/Card";
+import { AvatarEditor } from "@/components/common/AvatarEditor";
 import { extractErrorMessage, extractFieldErrors } from "@/services/api";
 import type { VehicleType } from "@/types/ride";
 import type { DocumentType } from "@/types/driver";
@@ -138,9 +139,7 @@ export default function DriverProfilePage() {
       {/* Account */}
       <Card>
         <CardBody className="flex items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-dark text-lg font-bold text-white">
-            {user?.name?.charAt(0).toUpperCase() ?? "D"}
-          </div>
+          <AvatarEditor name={user?.name ?? "D"} avatarUrl={user?.avatarUrl} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold text-foreground">{user?.name}</p>
             <p className="truncate text-sm text-muted">{user?.email}</p>

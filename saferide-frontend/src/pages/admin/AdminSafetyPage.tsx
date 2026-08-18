@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Siren, CheckCircle2, MapPin, Phone, User, Car } from "lucide-react";
+import { ChevronLeft, ChevronRight, Siren, CheckCircle2, MapPin, Phone, User, Car, Trash2 } from "lucide-react";
 import { adminSafetyService } from "@/services/adminSafetyService";
 import { useToast } from "@/contexts/ToastContext";
 import { Badge } from "@/components/common/Badge";
 import { Button } from "@/components/common/Button";
 import { Skeleton } from "@/components/common/Skeleton";
 import { EmptyState, ErrorState } from "@/components/common/StateViews";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ResolveSafetyAlertDialog } from "@/components/admin/ResolveSafetyAlertDialog";
+import { Avatar } from "@/components/common/Avatar";
 import { extractErrorMessage } from "@/services/api";
 import { cn } from "@/lib/utils";
 import type { SafetyAlert, SafetyAlertStatus } from "@/types/safety";
@@ -32,6 +34,8 @@ export default function AdminSafetyPage() {
   const queryClient = useQueryClient();
   const [resolvingAlert, setResolvingAlert] = useState<SafetyAlert | null>(null);
   const [isResolving, setIsResolving] = useState(false);
+  const [deletingAlert, setDeletingAlert] = useState<SafetyAlert | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const status = activeTab === "ALL" ? undefined : activeTab;
   const { data, isPending, isError, refetch } = useQuery({
@@ -57,6 +61,21 @@ export default function AdminSafetyPage() {
       showToast(extractErrorMessage(error), "error");
     } finally {
       setIsResolving(false);
+    }
+  }
+
+  async function deleteAlert() {
+    if (!deletingAlert) return;
+    setIsDeleting(true);
+    try {
+      await adminSafetyService.delete(deletingAlert.id);
+      showToast("Alert deleted", "success");
+      await queryClient.invalidateQueries({ queryKey: ["admin-safety-alerts"] });
+      setDeletingAlert(null);
+    } catch (error) {
+      showToast(extractErrorMessage(error), "error");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -132,27 +151,35 @@ export default function AdminSafetyPage() {
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
                     <User size={12} /> Customer
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">{alert.customer.name}</p>
-                  <a href={`tel:${alert.customer.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
-                    <Phone size={11} /> {alert.customer.phone}
-                  </a>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Avatar name={alert.customer.name} avatarUrl={alert.customer.avatarUrl} size={28} />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{alert.customer.name}</p>
+                      <a href={`tel:${alert.customer.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
+                        <Phone size={11} /> {alert.customer.phone}
+                      </a>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
                     <Car size={12} /> Driver
                   </p>
                   {alert.driver ? (
-                    <>
-                      <p className="mt-1 text-sm font-medium text-foreground">{alert.driver.name}</p>
-                      <a href={`tel:${alert.driver.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
-                        <Phone size={11} /> {alert.driver.phone}
-                      </a>
-                      {alert.driver.vehicleNumber && (
-                        <p className="mt-0.5 text-xs text-muted">
-                          {alert.driver.vehicleModel} · {alert.driver.vehicleNumber}
-                        </p>
-                      )}
-                    </>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Avatar name={alert.driver.name} avatarUrl={alert.driver.avatarUrl} size={28} />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{alert.driver.name}</p>
+                        <a href={`tel:${alert.driver.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
+                          <Phone size={11} /> {alert.driver.phone}
+                        </a>
+                        {alert.driver.vehicleNumber && (
+                          <p className="mt-0.5 text-xs text-muted">
+                            {alert.driver.vehicleModel} · {alert.driver.vehicleNumber}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   ) : (
                     <p className="mt-1 text-xs text-muted">No driver assigned yet</p>
                   )}
@@ -170,10 +197,19 @@ export default function AdminSafetyPage() {
 
               {alert.status === "RESOLVED" ? (
                 <div className="mt-3 rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs font-semibold text-foreground">
-                    Resolved by {alert.resolvedBy?.name ?? "—"}
-                    {alert.resolvedAt && ` · ${new Date(alert.resolvedAt).toLocaleString()}`}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-foreground">
+                      Resolved by {alert.resolvedBy?.name ?? "—"}
+                      {alert.resolvedAt && ` · ${new Date(alert.resolvedAt).toLocaleString()}`}
+                    </p>
+                    <button
+                      onClick={() => setDeletingAlert(alert)}
+                      aria-label="Delete this alert"
+                      className="shrink-0 rounded-lg p-1 text-muted hover:bg-slate-200 hover:text-danger"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                   {alert.resolutionNotes && <p className="mt-1 text-sm text-muted">{alert.resolutionNotes}</p>}
                 </div>
               ) : (
@@ -205,6 +241,18 @@ export default function AdminSafetyPage() {
         isLoading={isResolving}
         onConfirm={resolve}
         onCancel={() => setResolvingAlert(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deletingAlert}
+        title="Delete this alert?"
+        description="This only removes the record - it won't undo anything about the ride itself."
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        destructive
+        isLoading={isDeleting}
+        onConfirm={deleteAlert}
+        onCancel={() => setDeletingAlert(null)}
       />
     </div>
   );

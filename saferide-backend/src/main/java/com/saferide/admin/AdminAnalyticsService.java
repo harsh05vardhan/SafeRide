@@ -1,20 +1,29 @@
 package com.saferide.admin;
 
+import com.saferide.admin.dto.AdminRideSummaryResponse;
 import com.saferide.admin.dto.AnalyticsSummaryResponse;
+import com.saferide.admin.dto.TopDriverResponse;
 import com.saferide.common.VerificationStatus;
 import com.saferide.complaint.ComplaintRepository;
 import com.saferide.complaint.ComplaintStatus;
+import com.saferide.driver.Driver;
 import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.payment.PaymentRepository;
 import com.saferide.payment.PaymentStatus;
 import com.saferide.rating.RatingRepository;
+import com.saferide.ride.Ride;
+import com.saferide.ride.RideDriverInfoFactory;
 import com.saferide.ride.RideRepository;
 import com.saferide.ride.TerminalRideStatuses;
 import com.saferide.safety.SafetyAlertRepository;
 import com.saferide.safety.SafetyAlertStatus;
 import com.saferide.user.UserRepository;
+import com.saferide.user.dto.UserSummaryDTO;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +48,7 @@ public class AdminAnalyticsService {
     private final DriverRepository driverRepository;
     private final ComplaintRepository complaintRepository;
     private final SafetyAlertRepository safetyAlertRepository;
+    private final RideDriverInfoFactory rideDriverInfoFactory;
 
     @Transactional(readOnly = true)
     public AnalyticsSummaryResponse summary() {
@@ -63,5 +73,42 @@ public class AdminAnalyticsService {
                 complaintRepository.countByStatus(ComplaintStatus.RESOLVED),
                 complaintRepository.countByStatus(ComplaintStatus.DISMISSED),
                 safetyAlertRepository.countByStatus(SafetyAlertStatus.ACTIVE));
+    }
+
+    /** Most recently created rides, newest first - the admin dashboard's "recent rides" list. */
+    @Transactional(readOnly = true)
+    public List<AdminRideSummaryResponse> recentRides(int limit) {
+        return rideRepository.findAll(PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
+                .map(this::toRideSummary)
+                .getContent();
+    }
+
+    /**
+     * Verified drivers ranked by rating - a bounded 5 extra completed-ride-count
+     * queries here (one per leaderboard row) is fine; this is not the same
+     * N+1 shape as running that per-row inside a paginated list.
+     */
+    @Transactional(readOnly = true)
+    public List<TopDriverResponse> topDrivers() {
+        List<Driver> drivers = driverRepository.findTop5ByVerificationStatusOrderByRatingDesc(VerificationStatus.VERIFIED);
+        return drivers.stream()
+                .map(driver -> new TopDriverResponse(
+                        driver.getId(),
+                        driver.getUser().getName(),
+                        driver.getUser().getAvatarUrl(),
+                        driver.getRating(),
+                        rideRepository.countByDriverIdAndStatusIn(driver.getId(), TerminalRideStatuses.COMPLETED)))
+                .toList();
+    }
+
+    private AdminRideSummaryResponse toRideSummary(Ride ride) {
+        return new AdminRideSummaryResponse(
+                ride.getId(),
+                UserSummaryDTO.from(ride.getCustomer()),
+                rideDriverInfoFactory.from(ride),
+                ride.getPickupAddress(),
+                ride.getDestinationAddress(),
+                ride.getStatus(),
+                ride.getCreatedAt());
     }
 }

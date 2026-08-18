@@ -13,6 +13,7 @@ import com.saferide.driver.DriverRepository;
 import com.saferide.payment.PaymentRepository;
 import com.saferide.payment.PaymentStatus;
 import com.saferide.rating.RatingRepository;
+import com.saferide.ride.RideDriverInfoFactory;
 import com.saferide.ride.RideRepository;
 import com.saferide.safety.SafetyAlertRepository;
 import com.saferide.safety.SafetyAlertStatus;
@@ -40,13 +41,14 @@ class AdminAnalyticsServiceTest {
     @Mock private DriverRepository driverRepository;
     @Mock private ComplaintRepository complaintRepository;
     @Mock private SafetyAlertRepository safetyAlertRepository;
+    @Mock private RideDriverInfoFactory rideDriverInfoFactory;
 
     private AdminAnalyticsService service;
 
     @BeforeEach
     void setUp() {
         service = new AdminAnalyticsService(rideRepository, paymentRepository, ratingRepository,
-                userRepository, driverRepository, complaintRepository, safetyAlertRepository);
+                userRepository, driverRepository, complaintRepository, safetyAlertRepository, rideDriverInfoFactory);
     }
 
     @Test

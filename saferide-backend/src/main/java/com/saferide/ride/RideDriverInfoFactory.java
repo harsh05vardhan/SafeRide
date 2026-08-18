@@ -38,6 +38,7 @@ public class RideDriverInfoFactory {
                 driver.getRating(),
                 vehicle.map(Vehicle::getVehicleModel).orElse(null),
                 vehicle.map(Vehicle::getVehicleNumber).orElse(null),
-                vehicle.map(Vehicle::getVehicleColor).orElse(null));
+                vehicle.map(Vehicle::getVehicleColor).orElse(null),
+                driver.getUser().getAvatarUrl());
     }
 }

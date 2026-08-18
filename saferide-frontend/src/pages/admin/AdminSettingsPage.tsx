@@ -6,17 +6,20 @@ import { adminSettingsService } from "@/services/adminSettingsService";
 import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import { Skeleton } from "@/components/common/Skeleton";
+import { AvatarEditor } from "@/components/common/AvatarEditor";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { extractErrorMessage } from "@/services/api";
 
 /**
- * One setting for now: the support contact number shown to drivers (Driver
- * Profile) and to a blocked account failing at the login screen. Kept as
- * its own small page rather than folded into an existing one - it's a
- * platform-wide setting, not specific to drivers, users, or any other
- * existing admin screen.
+ * Two things live here: this admin's own photo (there's no separate "My
+ * Account" page for admins - a photo is a small enough addition that a
+ * whole new page for it would be disproportionate), and the one real
+ * platform-wide setting so far, the support contact number shown to
+ * drivers (Driver Profile) and to a blocked account failing at login.
  */
 export default function AdminSettingsPage() {
+  const { user } = useAuth();
   const { data, isPending } = useQuery({
     queryKey: ["settings", "support-contact"],
     queryFn: () => settingsService.getSupportContact(),
@@ -44,9 +47,14 @@ export default function AdminSettingsPage() {
   return (
     <div className="mx-auto max-w-lg px-4 py-6 sm:px-6">
       <h1 className="text-2xl font-extrabold text-dark">Settings</h1>
-      <p className="mt-1 text-sm text-muted">Platform-wide settings shown to customers and drivers across the app.</p>
+      <p className="mt-1 text-sm text-muted">Your account, and platform-wide settings shown to customers and drivers.</p>
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p className="mb-3 text-sm font-semibold text-foreground">My profile</p>
+        {user && <AvatarEditor name={user.name} avatarUrl={user.avatarUrl} />}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-dark">
             <Phone size={16} />

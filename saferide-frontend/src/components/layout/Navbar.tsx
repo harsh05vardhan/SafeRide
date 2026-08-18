@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/common/NotificationBell";
+import { Avatar } from "@/components/common/Avatar";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -29,7 +30,7 @@ const NAV_LINKS = [
 const BOTTOM_NAV_LEFT = NAV_LINKS.slice(0, 2);
 const BOTTOM_NAV_RIGHT = [NAV_LINKS[2], NAV_LINKS[4]];
 
-/** Avatar-initial + name + role, opening a tiny menu (Profile/Logout) - no stock photo, just the user's own first initial like every other avatar circle in this app already does. */
+/** Avatar (photo, or the initial-letter fallback) + name + role, opening a tiny menu (Profile/Logout). */
 function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -50,9 +51,7 @@ function UserMenu() {
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-slate-100">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-          {user.name.charAt(0).toUpperCase()}
-        </span>
+        <Avatar name={user.name} avatarUrl={user.avatarUrl} size={32} />
         <span className="hidden text-left leading-tight sm:block">
           <span className="block text-sm font-semibold text-foreground">{user.name.split(" ")[0]}</span>
           <span className="block text-[11px] text-muted">Customer</span>
@@ -116,9 +115,7 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
 
         <div className="flex items-center gap-3 border-b border-slate-100 p-4">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-            {user.name.charAt(0).toUpperCase()}
-          </span>
+          <Avatar name={user.name} avatarUrl={user.avatarUrl} size={40} />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
             <p className="text-xs text-muted">Customer</p>

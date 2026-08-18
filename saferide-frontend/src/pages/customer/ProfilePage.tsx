@@ -11,6 +11,7 @@ import { Input } from "@/components/common/Input";
 import { Label, FieldError } from "@/components/common/Label";
 import { Skeleton } from "@/components/common/Skeleton";
 import { Badge } from "@/components/common/Badge";
+import { AvatarEditor } from "@/components/common/AvatarEditor";
 import { extractErrorMessage } from "@/services/api";
 import { profileSchema, type ProfileFormValues } from "@/lib/validation";
 
@@ -59,20 +60,19 @@ export default function ProfilePage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 text-2xl font-bold text-dark">
-                {profile.name.charAt(0)}
-              </div>
-              <div>
-                <p className="text-lg font-bold text-dark">{profile.name}</p>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                  <Calendar size={12} />
-                  Joined {new Date(profile.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-                </div>
-              </div>
-              <Badge variant="success" className="ml-auto">
+            <div className="flex items-start justify-between gap-3">
+              <AvatarEditor
+                name={profile.name}
+                avatarUrl={profile.avatarUrl}
+                onSaved={(avatarUrl) => queryClient.setQueryData(["customer-profile"], { ...profile, avatarUrl })}
+              />
+              <Badge variant="success" className="shrink-0">
                 <ShieldCheck size={12} /> {profile.status}
               </Badge>
+            </div>
+            <div className="mt-3 flex items-center gap-1.5 text-xs text-muted">
+              <Calendar size={12} />
+              Joined {new Date(profile.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
             </div>
 
             <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>

@@ -1,6 +1,7 @@
 package com.saferide.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -169,6 +170,38 @@ class PostRideIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_RIDE_STATE"));
     }
 
+    /** The admin driver detail screen's totalEarnings - real charged payments, summed server-side, not the frontend adding up fares itself. */
+    @Test
+    void adminDriverDetailShowsRealTotalEarnings() throws Exception {
+        String customerToken = registerCustomer("earn-customer1@example.com", "9788300020");
+        String driverToken = readyDriver("earn-driver1@example.com", "9788300021", "DL-EARN-1", "EARN-VEH-01");
+        long rideId = buildRideAtPaymentPending(customerToken, driverToken);
+
+        String fareBody = mockMvc.perform(get("/api/rides/" + rideId + "/fare").header("Authorization", "Bearer " + customerToken))
+                .andReturn().getResponse().getContentAsString();
+        double lockedAmount = objectMapper.readTree(fareBody).at("/data/lockedAmount").asDouble();
+
+        String adminEmail = "earn-admin@example.com";
+        userService.createUser("Earnings Admin", adminEmail, "9788300022", passwordEncoder.encode("Password123!"), RoleName.ADMIN);
+        String adminToken = loginAndGetToken(adminEmail, "Password123!");
+
+        String driverProfile = mockMvc.perform(get("/api/drivers/profile").header("Authorization", "Bearer " + driverToken))
+                .andReturn().getResponse().getContentAsString();
+        long driverId = objectMapper.readTree(driverProfile).at("/data/id").asLong();
+
+        // Before payment - zero, not null/missing.
+        mockMvc.perform(get("/api/admin/drivers/" + driverId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.data.totalEarnings").value(0.0));
+
+        mockMvc.perform(post("/api/rides/" + rideId + "/pay").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/drivers/" + driverId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalEarnings").value(lockedAmount))
+                .andExpect(jsonPath("$.data.completedRideCount").value(1));
+    }
+
     @Test
     void ratingUpdatesDriverRatingAndCanOnlyHappenOnce() throws Exception {
         String customerToken = registerCustomer("rate-customer1@example.com", "9788300003");
@@ -295,6 +328,11 @@ class PostRideIntegrationTest extends AbstractIntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         assertThat(objectMapper.readTree(adminList).at("/data/content").findValuesAsText("id")).contains(String.valueOf(alertId));
 
+        // An active alert can never simply disappear - only a resolved one can be deleted.
+        mockMvc.perform(delete("/api/admin/safety/alerts/" + alertId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_SAFETY_ALERT_STATE"));
+
         // Resolving requires a real account of what happened - an empty/missing body is rejected.
         mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve")
                         .header("Authorization", "Bearer " + adminToken)
@@ -317,6 +355,18 @@ class PostRideIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"notes\":\"trying again\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_SAFETY_ALERT_STATE"));
+
+        // Now that it's resolved, an admin can clean it up - and it's actually gone afterward, not just re-labeled.
+        mockMvc.perform(delete("/api/admin/safety/alerts/" + alertId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Alert deleted"));
+
+        String afterDelete = mockMvc.perform(get("/api/admin/safety/alerts?status=RESOLVED").header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(afterDelete).at("/data/content").findValuesAsText("id")).doesNotContain(String.valueOf(alertId));
+
+        mockMvc.perform(delete("/api/admin/safety/alerts/" + alertId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test

@@ -25,6 +25,7 @@ export interface RideDriverInfo {
   vehicleModel: string | null;
   vehicleNumber: string | null;
   vehicleColor: string | null;
+  avatarUrl?: string | null;
 }
 
 export type RideCancellationReason = "CUSTOMER" | "DRIVER" | "NO_DRIVER_FOUND";

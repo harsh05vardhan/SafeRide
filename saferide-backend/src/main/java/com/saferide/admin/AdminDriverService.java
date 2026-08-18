@@ -11,6 +11,8 @@ import com.saferide.driver.DriverRepository;
 import com.saferide.driver.DriverService;
 import com.saferide.driver.dto.DriverDocumentResponse;
 import com.saferide.matching.DriverGeoIndex;
+import com.saferide.payment.PaymentRepository;
+import com.saferide.payment.PaymentStatus;
 import com.saferide.rating.RatingService;
 import com.saferide.ride.RideRepository;
 import com.saferide.ride.TerminalRideStatuses;
@@ -47,6 +49,7 @@ public class AdminDriverService {
     private final RideRepository rideRepository;
     private final RatingService ratingService;
     private final DriverGeoIndex geoIndex;
+    private final PaymentRepository paymentRepository;
 
     @Transactional(readOnly = true)
     public Page<DriverAdminSummaryResponse> listDrivers(VerificationStatus statusFilter, Pageable pageable) {
@@ -63,9 +66,10 @@ public class AdminDriverService {
         List<DriverDocumentResponse> documents = documentService.listForDriverId(driverId);
         long completedRideCount = rideRepository.countByDriverIdAndStatusIn(driverId, TerminalRideStatuses.COMPLETED);
         long cancelledRideCount = rideRepository.countByDriverIdAndStatusIn(driverId, TerminalRideStatuses.CANCELLED);
+        double totalEarnings = paymentRepository.sumAmountByStatusAndDriverId(PaymentStatus.COMPLETED, driverId);
         var recentRatings = ratingService.listForDriver(driverId, PageRequest.of(0, 10));
         return new DriverAdminDetailResponse(
-                toSummary(driver), vehicles, documents, completedRideCount, cancelledRideCount, recentRatings);
+                toSummary(driver), vehicles, documents, completedRideCount, cancelledRideCount, totalEarnings, recentRatings);
     }
 
     @Transactional

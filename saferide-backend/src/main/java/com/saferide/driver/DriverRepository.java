@@ -30,4 +30,7 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
     long countByVerificationStatus(VerificationStatus status);
 
     long countByOnlineStatus(DriverOnlineStatus status);
+
+    /** Admin dashboard leaderboard - verified only, so a brand-new driver still sitting on the default 5.0 rating never outranks someone with an actual track record. */
+    List<Driver> findTop5ByVerificationStatusOrderByRatingDesc(VerificationStatus status);
 }

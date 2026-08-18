@@ -10,6 +10,7 @@ import { EmptyState, ErrorState } from "@/components/common/StateViews";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AccountStatusBadge } from "@/components/admin/StatusBadges";
 import { CreateAdminDialog } from "@/components/admin/CreateAdminDialog";
+import { Avatar } from "@/components/common/Avatar";
 import { useToast } from "@/contexts/ToastContext";
 import { extractErrorMessage } from "@/services/api";
 import { cn } from "@/lib/utils";
@@ -134,8 +135,13 @@ export default function AdminUsersPage() {
               {data!.content.map((row) => (
                 <tr key={row.user.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{row.user.name}</p>
-                    <p className="text-xs text-muted">{row.user.email}</p>
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={row.user.name} avatarUrl={row.user.avatarUrl} size={30} />
+                      <div>
+                        <p className="font-medium text-foreground">{row.user.name}</p>
+                        <p className="text-xs text-muted">{row.user.email}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-foreground">{row.user.phone}</td>
                   <td className="px-4 py-3">

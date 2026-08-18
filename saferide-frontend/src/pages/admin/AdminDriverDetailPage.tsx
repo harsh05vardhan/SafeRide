@@ -11,6 +11,7 @@ import { Card, CardBody } from "@/components/common/Card";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ReasonConfirmDialog } from "@/components/admin/ReasonConfirmDialog";
 import { VerificationBadge, AccountStatusBadge } from "@/components/admin/StatusBadges";
+import { Avatar } from "@/components/common/Avatar";
 import { extractErrorMessage } from "@/services/api";
 
 type PendingAction =
@@ -72,7 +73,7 @@ export default function AdminDriverDetailPage() {
     );
   }
 
-  const { driver, vehicles, documents, completedRideCount, cancelledRideCount, recentRatings } = data;
+  const { driver, vehicles, documents, completedRideCount, cancelledRideCount, totalEarnings, recentRatings } = data;
   const isBlocked = driver.accountStatus === "BLOCKED";
   const canApprove = driver.verificationStatus !== "VERIFIED";
 
@@ -85,10 +86,13 @@ export default function AdminDriverDetailPage() {
       <Card>
         <CardBody>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-lg font-bold text-dark">{driver.user.name}</p>
-              <p className="text-sm text-muted">{driver.user.email} · {driver.user.phone}</p>
-              <p className="mt-1 font-mono text-xs text-muted">License {driver.licenseNumber}</p>
+            <div className="flex items-center gap-3">
+              <Avatar name={driver.user.name} avatarUrl={driver.user.avatarUrl} size={48} />
+              <div>
+                <p className="text-lg font-bold text-dark">{driver.user.name}</p>
+                <p className="text-sm text-muted">{driver.user.email} · {driver.user.phone}</p>
+                <p className="mt-1 font-mono text-xs text-muted">License {driver.licenseNumber}</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <VerificationBadge status={driver.verificationStatus} />
@@ -99,6 +103,10 @@ export default function AdminDriverDetailPage() {
           <div className="my-4 border-t border-slate-100" />
 
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
+            <div>
+              <p className="text-xs text-muted">Total earnings</p>
+              <p className="font-semibold text-foreground">₹{totalEarnings.toFixed(0)}</p>
+            </div>
             <div>
               <p className="text-xs text-muted">Rating</p>
               <p className="flex items-center gap-1 font-semibold text-foreground">

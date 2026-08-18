@@ -83,10 +83,24 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /**
+     * Role-agnostic - a customer, driver, or admin's own photo is the same
+     * concept regardless of role, so this lives here rather than being
+     * duplicated per-role like the rest of profile editing currently is.
+     * A blank/null value intentionally clears it back to the initial-letter
+     * avatar, not an error.
+     */
+    @Transactional
+    public UserProfileResponse updateAvatar(Long userId, String avatarUrl) {
+        User user = getById(userId);
+        user.setAvatarUrl(avatarUrl == null || avatarUrl.isBlank() ? null : avatarUrl);
+        return toProfileResponse(userRepository.save(user));
+    }
+
     private UserProfileResponse toProfileResponse(User user) {
         Set<RoleName> roleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
         return new UserProfileResponse(
                 user.getId(), user.getName(), user.getEmail(), user.getPhone(),
-                user.getStatus(), roleNames, user.getCreatedAt());
+                user.getStatus(), roleNames, user.getAvatarUrl(), user.getCreatedAt());
     }
 }
