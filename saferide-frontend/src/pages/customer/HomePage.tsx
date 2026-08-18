@@ -2,18 +2,20 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, Car, ChevronRight, MapPin, Plane, Search, ShoppingBag, Store, TrainFront } from "lucide-react";
+import { ArrowLeftRight, Car, ChevronRight, LocateFixed, MapPin, Plane, Search, ShoppingBag, Store, TrainFront } from "lucide-react";
 import { LocationPicker } from "@/components/ride/LocationPicker";
 import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
 import { RouteLine } from "@/components/map/RouteLine";
+import { MyLocationMarker } from "@/components/map/MyLocationMarker";
 import { Button } from "@/components/common/Button";
 import { Badge } from "@/components/common/Badge";
 import { Skeleton } from "@/components/common/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBooking, type LocationPoint } from "@/contexts/BookingContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useLiveLocation } from "@/hooks/useLiveLocation";
 import { rideService } from "@/services/rideService";
 import { extractErrorMessage } from "@/services/api";
 import { SUGGESTED_LOCATIONS, MAP_DEFAULT_CENTER } from "@/lib/suggestedLocations";
@@ -66,6 +68,10 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [isEstimating, setIsEstimating] = useState(false);
   const [pinTarget, setPinTarget] = useState<"pickup" | "destination" | null>(null);
+  // Requesting this is what triggers the browser's own native location-permission prompt the
+  // moment the customer opens the app - there's no separate custom dialog to build here, that
+  // prompt genuinely comes from the browser itself.
+  const { position: myLocation } = useLiveLocation(true);
 
   const { data: recentRides, isPending: recentRidesPending } = useQuery({
     queryKey: ["my-rides", "recent"],
@@ -76,7 +82,14 @@ export default function HomePage() {
     ? [pickup.latitude, pickup.longitude]
     : destination
       ? [destination.latitude, destination.longitude]
-      : MAP_DEFAULT_CENTER;
+      : myLocation
+        ? [myLocation.latitude, myLocation.longitude]
+        : MAP_DEFAULT_CENTER;
+
+  function useMyLocation() {
+    if (!myLocation) return;
+    setPickup({ label: "Current location", address: "Your current location", latitude: myLocation.latitude, longitude: myLocation.longitude });
+  }
 
   function handleMapClick(latitude: number, longitude: number) {
     if (!pinTarget) return;
@@ -144,6 +157,15 @@ export default function HomePage() {
         >
           <div className="relative space-y-2">
             <LocationPicker label="Pickup" placeholder="Choose pickup location" value={pickup} onChange={setPickup} accent="pickup" />
+            {myLocation && (
+              <button
+                type="button"
+                onClick={useMyLocation}
+                className="flex items-center gap-1.5 text-xs font-medium text-dark underline-offset-2 hover:underline"
+              >
+                <LocateFixed size={12} /> Use my current location
+              </button>
+            )}
             <div className="flex justify-center">
               <button
                 onClick={swap}
@@ -202,6 +224,7 @@ export default function HomePage() {
           <div className="mt-6 border-t border-slate-100 pt-4 lg:hidden">
             <div className="h-56 overflow-hidden rounded-xl">
               <MapView center={center} onMapClick={pinTarget ? handleMapClick : undefined}>
+                {myLocation && <MyLocationMarker latitude={myLocation.latitude} longitude={myLocation.longitude} />}
                 {pickup && <PickupMarker latitude={pickup.latitude} longitude={pickup.longitude} address={pickup.address} />}
                 {destination && (
                   <DestinationMarker latitude={destination.latitude} longitude={destination.longitude} address={destination.address} />
@@ -217,6 +240,7 @@ export default function HomePage() {
         {/* Map (desktop) */}
         <div className="hidden h-[calc(100vh-16rem)] overflow-hidden rounded-2xl border border-slate-200 shadow-sm lg:block">
           <MapView center={center} onMapClick={pinTarget ? handleMapClick : undefined}>
+            {myLocation && <MyLocationMarker latitude={myLocation.latitude} longitude={myLocation.longitude} />}
             {pickup && <PickupMarker latitude={pickup.latitude} longitude={pickup.longitude} address={pickup.address} />}
             {destination && (
               <DestinationMarker latitude={destination.latitude} longitude={destination.longitude} address={destination.address} />

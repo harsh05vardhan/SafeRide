@@ -24,3 +24,18 @@
     font-family: "Inter", system-ui, sans-serif;
   }
 }
+
+/* The "you are here" map marker's pulse ring - see components/map/markerIcons.ts's myLocationIcon. Defined once globally rather than injected per-marker-instance. */
+@keyframes saferide-location-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+.saferide-location-pulse {
+  animation: saferide-location-pulse 2s ease-out infinite;
+}

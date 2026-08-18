@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link } from "react-router-dom";
-import { Car, FileText, LogOut, Plus, CheckCircle2, Clock, XCircle, ChevronRight, MessageSquareWarning, Phone } from "lucide-react";
+import { Car, FileText, Plus, CheckCircle2, Clock, XCircle, ChevronRight, MessageSquareWarning, Phone, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useDriverProfile } from "@/hooks/useDriverProfile";
@@ -18,7 +18,9 @@ import { Badge } from "@/components/common/Badge";
 import { Skeleton } from "@/components/common/Skeleton";
 import { Card, CardBody } from "@/components/common/Card";
 import { AvatarEditor } from "@/components/common/AvatarEditor";
+import { AppSettingsSection } from "@/components/common/AppSettingsSection";
 import { extractErrorMessage, extractFieldErrors } from "@/services/api";
+import { profileSchema, type ProfileFormValues } from "@/lib/validation";
 import type { VehicleType } from "@/types/ride";
 import type { DocumentType } from "@/types/driver";
 import type { VerificationStatus } from "@/types/common";
@@ -62,7 +64,7 @@ function verificationBadge(status: VerificationStatus) {
 }
 
 export default function DriverProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { data: profile, isPending: profilePending } = useDriverProfile();
@@ -86,6 +88,27 @@ export default function DriverProfilePage() {
     resolver: zodResolver(documentSchema),
     defaultValues: { documentType: "DRIVING_LICENSE" },
   });
+
+  const profileForm = useForm<ProfileFormValues>({ resolver: zodResolver(profileSchema) });
+  useEffect(() => {
+    if (profile) profileForm.reset({ name: profile.user.name, phone: profile.user.phone });
+  }, [profile, profileForm]);
+
+  async function onUpdateProfile(values: ProfileFormValues) {
+    try {
+      const updated = await driverService.updateProfile(values);
+      queryClient.setQueryData(["driver-profile"], updated);
+      updateUser({ name: updated.user.name, phone: updated.user.phone });
+      profileForm.reset({ name: updated.user.name, phone: updated.user.phone });
+      showToast("Profile updated", "success");
+    } catch (error) {
+      const fieldErrors = extractFieldErrors(error);
+      if (fieldErrors) {
+        Object.entries(fieldErrors).forEach(([field, message]) => profileForm.setError(field as keyof ProfileFormValues, { message }));
+      }
+      showToast(extractErrorMessage(error), "error");
+    }
+  }
 
   async function onRegisterVehicle(values: VehicleFormValues) {
     try {
@@ -146,6 +169,31 @@ export default function DriverProfilePage() {
             <p className="text-sm text-muted">{user?.phone}</p>
           </div>
           {profile && verificationBadge(profile.verificationStatus)}
+        </CardBody>
+      </Card>
+
+      {/* Edit name/phone - email stays read-only, same rule the customer-side profile follows. */}
+      <Card>
+        <CardBody>
+          <form onSubmit={profileForm.handleSubmit(onUpdateProfile)} className="space-y-3" noValidate>
+            <div>
+              <Label htmlFor="driver-name">
+                <UserIcon size={13} className="mr-1 inline" /> Full name
+              </Label>
+              <Input id="driver-name" error={profileForm.formState.errors.name?.message} {...profileForm.register("name")} />
+              <FieldError message={profileForm.formState.errors.name?.message} />
+            </div>
+            <div>
+              <Label htmlFor="driver-phone">
+                <Phone size={13} className="mr-1 inline" /> Phone
+              </Label>
+              <Input id="driver-phone" error={profileForm.formState.errors.phone?.message} {...profileForm.register("phone")} />
+              <FieldError message={profileForm.formState.errors.phone?.message} />
+            </div>
+            <Button type="submit" isLoading={profileForm.formState.isSubmitting} disabled={!profileForm.formState.isDirty}>
+              Save changes
+            </Button>
+          </form>
         </CardBody>
       </Card>
 
@@ -345,12 +393,7 @@ export default function DriverProfilePage() {
         </a>
       )}
 
-      <button
-        onClick={() => void logout()}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-danger/5 py-3 text-sm font-semibold text-danger"
-      >
-        <LogOut size={16} /> Log out
-      </button>
+      <AppSettingsSection />
     </div>
   );
 }

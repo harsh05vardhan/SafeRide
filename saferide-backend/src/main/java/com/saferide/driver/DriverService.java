@@ -9,6 +9,7 @@ import com.saferide.matching.DriverGeoIndex;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserService;
+import com.saferide.user.dto.UpdateProfileRequest;
 import com.saferide.user.dto.UserSummaryDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,20 @@ public class DriverService {
 
     @Transactional(readOnly = true)
     public DriverProfileResponse getProfileByUserId(Long userId) {
+        return toProfileResponse(getDriverByUserId(userId));
+    }
+
+    /**
+     * {@code PUT /api/drivers/profile} - name/phone editing for a driver
+     * account. {@code CustomerController}'s equivalent endpoint is gated
+     * {@code hasRole('CUSTOMER')}, so it can't be reused directly for a
+     * pure-driver account; this delegates to the exact same
+     * {@code UserService#updateProfile} (same validation, same duplicate-
+     * phone check) rather than re-implementing it.
+     */
+    @Transactional
+    public DriverProfileResponse updateOwnProfile(Long userId, UpdateProfileRequest request) {
+        userService.updateProfile(userId, request);
         return toProfileResponse(getDriverByUserId(userId));
     }
 

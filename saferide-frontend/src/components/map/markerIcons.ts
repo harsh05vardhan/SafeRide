@@ -30,6 +30,22 @@ function pinIcon(color: string, glyph: string): L.DivIcon {
 export const pickupIcon = pinIcon("#0F172A", "P");
 export const destinationIcon = pinIcon("#EF4444", "D");
 
+/** The customer's own live position - a small pulsing blue dot, the same visual language every map app uses for "you are here" (deliberately distinct from the black/red pickup/destination pins and the amber driver marker). The pulse keyframe itself is defined once in index.css, not re-injected per marker instance. */
+export const myLocationIcon = L.divIcon({
+  className: "",
+  html: `
+    <div style="width: 22px; height: 22px; position: relative; transform: translate(-50%, -50%);">
+      <div class="saferide-location-pulse" style="position:absolute; inset:0; border-radius:9999px; background:#3B82F6;"></div>
+      <div style="
+        position:absolute; top:50%; left:50%; width:14px; height:14px; margin:-7px 0 0 -7px;
+        border-radius:9999px; background:#3B82F6; border:2.5px solid white;
+        box-shadow: 0 1px 4px rgba(15,23,42,0.4);
+      "></div>
+    </div>`,
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
 export const driverIcon = L.divIcon({
   className: "",
   html: `

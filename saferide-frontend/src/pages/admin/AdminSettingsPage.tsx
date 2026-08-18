@@ -7,6 +7,7 @@ import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import { Skeleton } from "@/components/common/Skeleton";
 import { AvatarEditor } from "@/components/common/AvatarEditor";
+import { AppSettingsSection } from "@/components/common/AppSettingsSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { extractErrorMessage } from "@/services/api";
@@ -82,6 +83,10 @@ export default function AdminSettingsPage() {
           </div>
         )}
         <p className="mt-2 text-xs text-muted">Leave blank and save to remove the number - it just won't be shown anywhere.</p>
+      </div>
+
+      <div className="mt-4">
+        <AppSettingsSection />
       </div>
     </div>
   );

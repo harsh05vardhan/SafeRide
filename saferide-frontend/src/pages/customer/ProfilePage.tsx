@@ -12,6 +12,7 @@ import { Label, FieldError } from "@/components/common/Label";
 import { Skeleton } from "@/components/common/Skeleton";
 import { Badge } from "@/components/common/Badge";
 import { AvatarEditor } from "@/components/common/AvatarEditor";
+import { AppSettingsSection } from "@/components/common/AppSettingsSection";
 import { extractErrorMessage } from "@/services/api";
 import { profileSchema, type ProfileFormValues } from "@/lib/validation";
 
@@ -116,6 +117,10 @@ export default function ProfilePage() {
         </div>
         <ChevronRight size={16} className="text-muted" />
       </Link>
+
+      <div className="mt-4">
+        <AppSettingsSection />
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import com.saferide.driver.dto.DriverStatusUpdateRequest;
 import com.saferide.ride.RideEventPublisher;
 import com.saferide.ride.RideService;
 import com.saferide.ride.dto.RideResponse;
+import com.saferide.user.dto.UpdateProfileRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -63,6 +64,14 @@ public class DriverController {
     @PreAuthorize("hasRole('DRIVER')")
     public ApiResponse<DriverProfileResponse> getProfile(@AuthenticationPrincipal AuthenticatedUser principal) {
         return ApiResponse.ok(driverService.getProfileByUserId(principal.userId()));
+    }
+
+    @PutMapping("/profile")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ApiResponse<DriverProfileResponse> updateProfile(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody UpdateProfileRequest request) {
+        return ApiResponse.ok("Profile updated successfully", driverService.updateOwnProfile(principal.userId(), request));
     }
 
     @PutMapping("/status")

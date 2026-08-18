@@ -253,6 +253,33 @@ class DriverVerificationIntegrationTest extends AbstractIntegrationTest {
         return driverId;
     }
 
+    /** PUT /api/drivers/profile - the driver-side equivalent of CustomerController's profile edit, since a pure-driver account holds no CUSTOMER role to call that one with. */
+    @Test
+    void driverCanEditTheirOwnNameAndPhone() throws Exception {
+        String driverToken = registerDriverAndLogin("edit-driver@example.com", "9333300091", "DL-EDIT-0001");
+
+        mockMvc.perform(put("/api/drivers/profile")
+                        .header("Authorization", "Bearer " + driverToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed Driver\",\"phone\":\"9333300092\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.name").value("Renamed Driver"))
+                .andExpect(jsonPath("$.data.user.phone").value("9333300092"));
+
+        mockMvc.perform(get("/api/drivers/profile").header("Authorization", "Bearer " + driverToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.name").value("Renamed Driver"));
+
+        // Phone uniqueness is still enforced - same check CustomerController's endpoint uses.
+        String otherDriverToken = registerDriverAndLogin("edit-driver-2@example.com", "9333300093", "DL-EDIT-0002");
+        mockMvc.perform(put("/api/drivers/profile")
+                        .header("Authorization", "Bearer " + otherDriverToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Someone\",\"phone\":\"9333300092\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PHONE_ALREADY_REGISTERED"));
+    }
+
     @Test
     void registeringADuplicateVehicleNumberIsRejected() throws Exception {
         String driverAToken = registerDriverAndLogin("veh-owner-a@example.com", "9333300003", "DL-VEH-A");

@@ -8,10 +8,17 @@ import type {
 } from "@/types/driver";
 import type { PageResponse } from "@/types/common";
 import type { Ride } from "@/types/ride";
+import type { UpdateProfileRequest } from "@/types/auth";
 
 export const driverService = {
   async getProfile(): Promise<DriverProfile> {
     const response = await api.get<ApiResponse<DriverProfile>>("/drivers/profile");
+    return response.data.data;
+  },
+
+  /** The driver-side equivalent of customerService.updateProfile - a pure-driver account has no CUSTOMER role to call that one with. */
+  async updateProfile(request: UpdateProfileRequest): Promise<DriverProfile> {
+    const response = await api.put<ApiResponse<DriverProfile>>("/drivers/profile", request);
     return response.data.data;
   },
 

@@ -10,10 +10,10 @@ import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import { Label, FieldError } from "@/components/common/Label";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { LoginHeroIllustration } from "@/components/auth/LoginHeroIllustration";
 import { extractErrorCode, extractErrorMessage } from "@/services/api";
 import { settingsService } from "@/services/settingsService";
 import { loginSchema, type LoginFormValues } from "@/lib/validation";
-import { SAFERIDE_FEATURES } from "@/lib/features";
 
 /** Small inline brand marks - not worth a whole icon-library dependency for three static logos. */
 function GoogleMark() {
@@ -39,23 +39,6 @@ function AppleMark() {
     <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true" fill="#000">
       <path d="M16.36 1c.12 1.02-.29 2.02-.9 2.75-.63.75-1.68 1.33-2.7 1.25-.14-1 .35-2.05.94-2.72C14.35 1.5 15.4.98 16.36 1Zm3.3 16.32c-.42.98-.62 1.42-1.16 2.3-.76 1.22-1.83 2.74-3.15 2.75-1.17.02-1.47-.76-3.06-.75-1.58.01-1.92.77-3.09.75-1.32-.02-2.33-1.38-3.09-2.6-2.12-3.36-2.34-7.3-1.03-9.4.93-1.48 2.4-2.35 3.78-2.35 1.4 0 2.29.79 3.45.79 1.13 0 1.82-.79 3.45-.79 1.24 0 2.55.68 3.48 1.85-3.06 1.68-2.56 6.06.42 7.45Z" />
     </svg>
-  );
-}
-
-/** The dark, glowing brand panel - full left column on desktop, a compact top band on mobile. */
-function BrandGlow({ className }: { className?: string }) {
-  return (
-    <div className={className}>
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-dark to-black" />
-      <div
-        className="absolute inset-0 opacity-40"
-        style={{ backgroundImage: "radial-gradient(circle at 20% 15%, rgba(255,193,7,0.18), transparent 45%)" }}
-      />
-      <div
-        className="absolute inset-0 opacity-30"
-        style={{ backgroundImage: "radial-gradient(circle at 90% 85%, rgba(255,193,7,0.16), transparent 42%)" }}
-      />
-    </div>
   );
 }
 
@@ -106,95 +89,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">
-      {/* Desktop: full brand panel, left column */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-dark p-10 text-white lg:flex">
-        <BrandGlow className="absolute inset-0" />
-        <div className="relative z-10 flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ShieldCheck size={22} />
-          </div>
-          <span className="text-xl font-extrabold tracking-tight">SafeRide</span>
-        </div>
-
-        <motion.div
-          className="relative z-10"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <h1 className="text-4xl font-extrabold leading-tight">
-            Your ride.
-            <br />
-            Your safety.
-            <br />
-            <span className="text-primary">Our priority.</span>
-          </h1>
-          <p className="mt-4 max-w-md text-slate-300">
-            Transparent fares, reliable rides and 24/7 safety for every journey.
-          </p>
-        </motion.div>
-
-        <div className="relative z-10 space-y-3">
-          {SAFERIDE_FEATURES.map(({ icon: Icon, title, description }, i) => (
-            <motion.div
-              key={title}
-              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur"
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 0.08 * i }}
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <Icon size={17} />
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-md px-5 pb-0 pt-6 sm:max-w-lg sm:pt-10">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-dark text-primary">
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <span className="text-xl font-extrabold tracking-tight text-dark">
+                Safe<span className="text-primary">Ride</span>
               </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">{title}</p>
-                <p className="text-xs text-slate-400">{description}</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Mobile/tablet: compact glowing hero band instead of a bare white page */}
-      <div className="relative overflow-hidden px-6 pb-14 pt-8 text-white lg:hidden">
-        <BrandGlow className="absolute inset-0" />
-        <div className="relative z-10 flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ShieldCheck size={20} />
+              <p className="text-xs text-muted">Your ride. Your safety.</p>
+            </div>
           </div>
-          <span className="text-lg font-extrabold tracking-tight">SafeRide</span>
         </div>
-        <motion.p
-          className="relative z-10 mt-5 max-w-xs text-lg font-bold leading-snug"
+
+        {/* Hero illustration - see LoginHeroIllustration's own doc for why this is a vector
+            interpretation, not a literal copy of a photographic reference. */}
+        <motion.div
+          className="mt-2"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          Your ride. Your safety. <span className="text-primary">Our priority.</span>
-        </motion.p>
+          <LoginHeroIllustration />
+        </motion.div>
+
+        {/* Headline */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }}>
+          <h1 className="text-3xl font-extrabold leading-tight text-dark">
+            Welcome
+            <br />
+            <span className="text-primary">back!</span> 👋
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            Login to continue your safe journey with <span className="font-semibold text-dark">SafeRide</span>.
+          </p>
+        </motion.div>
       </div>
 
-      {/* Form */}
-      <div className="flex justify-center px-4 lg:items-center lg:p-10">
+      {/* Form card - a bottom-sheet look on mobile, a centered card on larger screens */}
+      <div className="mt-6 flex justify-center px-0 sm:mt-8 sm:px-4">
         <motion.div
-          className="-mt-8 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl shadow-slate-900/10 sm:p-8 lg:mt-0 lg:rounded-none lg:p-0 lg:shadow-none"
+          className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-xl shadow-slate-900/10 sm:max-w-lg sm:rounded-3xl sm:p-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-extrabold text-dark">Welcome back!</h2>
-              <p className="mt-1 text-sm text-muted">Login to continue your journey with SafeRide.</p>
-            </div>
-            <Link
-              to="/register"
-              className="hidden shrink-0 rounded-full border border-primary px-4 py-1.5 text-xs font-semibold text-dark hover:bg-primary/10 sm:block"
-            >
-              Sign up
-            </Link>
-          </div>
+          <h2 className="text-xl font-extrabold text-dark">Login to your account</h2>
+          <p className="mt-1 text-sm text-muted">Please enter your details to continue</p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
             <div>
@@ -241,7 +186,7 @@ export default function LoginPage() {
             </div>
 
             <label className="flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/50" />
+              <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/50" />
               Remember me
             </label>
 
@@ -284,10 +229,10 @@ export default function LoginPage() {
             Your data is protected with industry-standard encryption
           </p>
 
-          <p className="mt-4 text-center text-sm text-muted sm:hidden">
+          <p className="mt-4 text-center text-sm text-muted">
             New here?{" "}
-            <Link to="/register" className="font-semibold text-dark hover:underline">
-              Sign up
+            <Link to="/register" className="inline-flex items-center gap-1 font-semibold text-dark hover:underline">
+              Sign up <ArrowRight size={13} />
             </Link>
           </p>
         </motion.div>
