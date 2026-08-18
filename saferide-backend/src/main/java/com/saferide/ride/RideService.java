@@ -43,6 +43,7 @@ import com.saferide.vehicle.VehicleService;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -251,15 +252,19 @@ public class RideService {
 
     @Transactional(readOnly = true)
     public Page<RideResponse> listForCustomer(Long customerUserId, Pageable pageable) {
-        return rideRepository.findByCustomerIdOrderByCreatedAtDesc(customerUserId, pageable)
-                .map(ride -> toResponse(ride, true));
+        Page<Ride> page = rideRepository.findByCustomerIdOrderByCreatedAtDesc(customerUserId, pageable);
+        Map<Long, RideDriverInfo> driverInfoByRideId = rideDriverInfoFactory.fromBatch(page.getContent());
+        return page.map(ride -> toResponse(ride, true, driverInfoByRideId.get(ride.getId())));
     }
 
     @Transactional(readOnly = true)
     public Page<RideResponse> listForDriver(Long driverUserId, Pageable pageable) {
         Driver driver = driverService.getDriverByUserId(driverUserId);
-        return rideRepository.findByDriverIdOrderByCreatedAtDesc(driver.getId(), pageable)
-                .map(ride -> toResponse(ride, false));
+        Page<Ride> page = rideRepository.findByDriverIdOrderByCreatedAtDesc(driver.getId(), pageable);
+        // Every row here shares the exact same driver (the caller), but batching keeps this one
+        // shape with listForCustomer rather than a special-cased single vehicle lookup.
+        Map<Long, RideDriverInfo> driverInfoByRideId = rideDriverInfoFactory.fromBatch(page.getContent());
+        return page.map(ride -> toResponse(ride, false, driverInfoByRideId.get(ride.getId())));
     }
 
     /**
@@ -622,8 +627,11 @@ public class RideService {
     }
 
     private RideResponse toResponse(Ride ride, boolean includeOtp) {
-        RideDriverInfo driverInfo = rideDriverInfoFactory.from(ride);
+        return toResponse(ride, includeOtp, rideDriverInfoFactory.from(ride));
+    }
 
+    /** Takes a pre-computed RideDriverInfo - used by listForCustomer/listForDriver, which batch-fetch every row's driver info in one query up front instead of calling {@link #toResponse(Ride, boolean)} (and therefore RideDriverInfoFactory#from) once per row. */
+    private RideResponse toResponse(Ride ride, boolean includeOtp, RideDriverInfo driverInfo) {
         return new RideResponse(
                 ride.getId(),
                 UserSummaryDTO.from(ride.getCustomer()),

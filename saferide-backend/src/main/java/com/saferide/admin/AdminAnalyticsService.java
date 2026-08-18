@@ -16,11 +16,13 @@ import com.saferide.ride.Ride;
 import com.saferide.ride.RideDriverInfoFactory;
 import com.saferide.ride.RideRepository;
 import com.saferide.ride.TerminalRideStatuses;
+import com.saferide.ride.dto.RideDriverInfo;
 import com.saferide.safety.SafetyAlertRepository;
 import com.saferide.safety.SafetyAlertStatus;
 import com.saferide.user.UserRepository;
 import com.saferide.user.dto.UserSummaryDTO;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -78,9 +80,11 @@ public class AdminAnalyticsService {
     /** Most recently created rides, newest first - the admin dashboard's "recent rides" list. */
     @Transactional(readOnly = true)
     public List<AdminRideSummaryResponse> recentRides(int limit) {
-        return rideRepository.findAll(PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
-                .map(this::toRideSummary)
-                .getContent();
+        List<Ride> rides = rideRepository.findAll(PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
+        // One query for every distinct driver across the whole list, not one query per row -
+        // same reasoning as RideService#listForCustomer/listForDriver.
+        Map<Long, RideDriverInfo> driverInfoByRideId = rideDriverInfoFactory.fromBatch(rides);
+        return rides.stream().map(ride -> toRideSummary(ride, driverInfoByRideId.get(ride.getId()))).toList();
     }
 
     /**
@@ -101,11 +105,11 @@ public class AdminAnalyticsService {
                 .toList();
     }
 
-    private AdminRideSummaryResponse toRideSummary(Ride ride) {
+    private AdminRideSummaryResponse toRideSummary(Ride ride, RideDriverInfo driverInfo) {
         return new AdminRideSummaryResponse(
                 ride.getId(),
                 UserSummaryDTO.from(ride.getCustomer()),
-                rideDriverInfoFactory.from(ride),
+                driverInfo,
                 ride.getPickupAddress(),
                 ride.getDestinationAddress(),
                 ride.getStatus(),

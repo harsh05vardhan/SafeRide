@@ -8,8 +8,11 @@ import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.exception.UnauthorizedException;
 import com.saferide.vehicle.dto.VehicleRegisterRequest;
 import com.saferide.vehicle.dto.VehicleResponse;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -100,6 +103,21 @@ public class VehicleService {
     @Transactional(readOnly = true)
     public Optional<Vehicle> getActiveVehicleEntity(Long driverId) {
         return vehicleRepository.findByDriverIdAndActiveTrue(driverId);
+    }
+
+    /**
+     * Batch form, keyed by driver id - one query for every driver across a
+     * whole page of rides instead of {@link #getActiveVehicleEntity} called
+     * once per row (see RideDriverInfoFactory#fromBatch, which is what this
+     * exists for).
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Vehicle> getActiveVehiclesByDriverIds(Collection<Long> driverIds) {
+        if (driverIds.isEmpty()) {
+            return Map.of();
+        }
+        return vehicleRepository.findByDriverIdInAndActiveTrue(driverIds).stream()
+                .collect(Collectors.toMap(v -> v.getDriver().getId(), v -> v));
     }
 
     private Vehicle getOwnedVehicle(Long driverId, Long vehicleId) {
