@@ -96,7 +96,7 @@ export default function AdminComplaintDetailPage() {
             <Badge variant={STATUS_VARIANT[complaint.status]}>{complaint.status.replaceAll("_", " ")}</Badge>
           </div>
 
-          <div className="my-4 border-t border-slate-100" />
+          <div className="my-4 border-t border-slate-100 dark:border-card-border" />
 
           <p className="text-sm font-semibold text-dark">Description</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{complaint.description}</p>

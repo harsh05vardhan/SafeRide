@@ -153,7 +153,7 @@ export default function HomePage() {
           initial={{ opacity: 0, x: -16 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+          className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm sm:p-6"
         >
           <div className="relative space-y-2">
             <LocationPicker label="Pickup" placeholder="Choose pickup location" value={pickup} onChange={setPickup} accent="pickup" />
@@ -171,7 +171,7 @@ export default function HomePage() {
                 onClick={swap}
                 type="button"
                 aria-label="Swap pickup and destination"
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-muted shadow-sm hover:text-dark"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-card-border bg-white dark:bg-card text-muted shadow-sm hover:text-dark"
               >
                 <ArrowLeftRight size={14} className="rotate-90" />
               </button>
@@ -204,7 +204,7 @@ export default function HomePage() {
                     key={location.label}
                     type="button"
                     onClick={() => pickSuggestion(location)}
-                    className="flex w-24 shrink-0 flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-center transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    className="flex w-24 shrink-0 flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3 text-center transition-colors hover:border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:bg-white/5"
                   >
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-dark">
                       <Icon size={16} />
@@ -221,7 +221,7 @@ export default function HomePage() {
             Find Ride
           </Button>
 
-          <div className="mt-6 border-t border-slate-100 pt-4 lg:hidden">
+          <div className="mt-6 border-t border-slate-100 dark:border-card-border pt-4 lg:hidden">
             <div className="h-56 overflow-hidden rounded-xl">
               <MapView center={center} onMapClick={pinTarget ? handleMapClick : undefined}>
                 {myLocation && <MyLocationMarker latitude={myLocation.latitude} longitude={myLocation.longitude} />}
@@ -238,7 +238,7 @@ export default function HomePage() {
         </motion.div>
 
         {/* Map (desktop) */}
-        <div className="hidden h-[calc(100vh-16rem)] overflow-hidden rounded-2xl border border-slate-200 shadow-sm lg:block">
+        <div className="hidden h-[calc(100vh-16rem)] overflow-hidden rounded-2xl border border-slate-200 dark:border-card-border shadow-sm lg:block">
           <MapView center={center} onMapClick={pinTarget ? handleMapClick : undefined}>
             {myLocation && <MyLocationMarker latitude={myLocation.latitude} longitude={myLocation.longitude} />}
             {pickup && <PickupMarker latitude={pickup.latitude} longitude={pickup.longitude} address={pickup.address} />}
@@ -255,7 +255,7 @@ export default function HomePage() {
       {/* Same pitch as the login page, reused rather than reinvented - see lib/features.ts. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {SAFERIDE_FEATURES.map(({ icon: Icon, title, description }) => (
-          <div key={title} className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+          <div key={title} className="flex items-center gap-2.5 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3.5 shadow-sm">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-dark">
               <Icon size={16} />
             </span>
@@ -283,7 +283,7 @@ export default function HomePage() {
             ))}
           </div>
         ) : !recentRides || recentRides.content.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-6 text-center">
+          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 px-5 py-6 text-center">
             <p className="mx-auto text-sm text-muted">No rides yet — book your first one above.</p>
           </div>
         ) : (
@@ -292,9 +292,9 @@ export default function HomePage() {
               <Link
                 key={ride.id}
                 to={`/ride/${ride.id}`}
-                className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md"
+                className="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-dark">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 text-sm font-bold text-dark">
                   {ride.driver ? ride.driver.name.charAt(0) : <Car size={17} />}
                 </div>
                 <div className="min-w-0 flex-1">

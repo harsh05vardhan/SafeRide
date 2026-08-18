@@ -93,7 +93,7 @@ export default function DriverRidesPage() {
           <EmptyState icon={Inbox} title="No open requests right now" description="We'll assign you a ride automatically as soon as one matches." />
         ) : (
           openRides!.content.map((ride) => (
-            <div key={ride.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={ride.id} className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
               <p className="text-sm font-semibold text-foreground">{ride.customer.name}</p>
               <div className="mt-2 space-y-1.5 text-sm">
                 <p className="flex items-start gap-2">

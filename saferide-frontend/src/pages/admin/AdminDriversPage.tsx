@@ -44,7 +44,7 @@ export default function AdminDriversPage() {
       <h1 className="text-2xl font-extrabold text-dark">Drivers</h1>
       <p className="mt-1 text-sm text-muted">Review driver, vehicle and document verification.</p>
 
-      <div className="mt-5 flex gap-1 border-b border-slate-200">
+      <div className="mt-5 flex gap-1 border-b border-slate-200 dark:border-card-border">
         {TABS.map((tab) => (
           <button
             key={tab.value}
@@ -59,7 +59,7 @@ export default function AdminDriversPage() {
         ))}
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card shadow-sm">
         {isPending ? (
           <div className="space-y-2 p-4">
             {[...Array(5)].map((_, i) => (
@@ -77,7 +77,7 @@ export default function AdminDriversPage() {
         ) : (
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 text-xs font-semibold uppercase tracking-wide text-muted">
+              <tr className="border-b border-slate-100 dark:border-card-border text-xs font-semibold uppercase tracking-wide text-muted">
                 <th className="px-4 py-3">Driver</th>
                 <th className="px-4 py-3">License</th>
                 <th className="px-4 py-3">Reliability</th>
@@ -88,7 +88,7 @@ export default function AdminDriversPage() {
             </thead>
             <tbody>
               {data!.content.map((driver) => (
-                <tr key={driver.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                <tr key={driver.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 dark:bg-white/5">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={driver.user.name} avatarUrl={driver.user.avatarUrl} size={30} />

@@ -59,7 +59,7 @@ export function ShareRideDialog({ rideId, open, onClose }: ShareRideDialogProps)
           <motion.div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-card p-6 shadow-xl"
             initial={{ opacity: 0, scale: 0.94, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
@@ -73,7 +73,7 @@ export function ShareRideDialog({ rideId, open, onClose }: ShareRideDialogProps)
               Anyone with this link can follow your trip live - no account needed. It stops working once the trip is over.
             </p>
 
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 dark:border-card-border bg-slate-50 dark:bg-white/5 p-3">
               {isLoading || !url ? (
                 <Spinner size={16} />
               ) : (

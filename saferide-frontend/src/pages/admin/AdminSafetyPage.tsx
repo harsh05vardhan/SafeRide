@@ -84,7 +84,7 @@ export default function AdminSafetyPage() {
       <h1 className="text-2xl font-extrabold text-dark">Safety alerts</h1>
       <p className="mt-1 text-sm text-muted">SOS presses from customers and drivers mid-ride.</p>
 
-      <div className="mt-5 flex gap-1 border-b border-slate-200">
+      <div className="mt-5 flex gap-1 border-b border-slate-200 dark:border-card-border">
         {TABS.map((tab) => (
           <button
             key={tab.value}
@@ -112,7 +112,7 @@ export default function AdminSafetyPage() {
               key={alert.id}
               className={cn(
                 "rounded-2xl border p-4 shadow-sm",
-                alert.status === "ACTIVE" ? "border-danger/40 bg-danger/5" : "border-slate-200 bg-white",
+                alert.status === "ACTIVE" ? "border-danger/40 bg-danger/5" : "border-slate-200 dark:border-card-border bg-white dark:bg-card",
               )}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -120,7 +120,7 @@ export default function AdminSafetyPage() {
                   <div
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                      alert.status === "ACTIVE" ? "bg-danger/15 text-danger" : "bg-slate-100 text-muted",
+                      alert.status === "ACTIVE" ? "bg-danger/15 text-danger" : "bg-slate-100 dark:bg-white/10 text-muted",
                     )}
                   >
                     <Siren size={16} />
@@ -135,7 +135,7 @@ export default function AdminSafetyPage() {
                 <Badge variant={alert.status === "ACTIVE" ? "danger" : "success"}>{alert.status}</Badge>
               </div>
 
-              <div className="my-3 border-t border-slate-100" />
+              <div className="my-3 border-t border-slate-100 dark:border-card-border" />
 
               {/* Ride detail - route + current status, so the admin doesn't have to look this up separately. */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -147,7 +147,7 @@ export default function AdminSafetyPage() {
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="rounded-xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
                     <User size={12} /> Customer
                   </p>
@@ -161,7 +161,7 @@ export default function AdminSafetyPage() {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="rounded-xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
                     <Car size={12} /> Driver
                   </p>
@@ -196,7 +196,7 @@ export default function AdminSafetyPage() {
               </a>
 
               {alert.status === "RESOLVED" ? (
-                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                <div className="mt-3 rounded-xl bg-slate-50 dark:bg-white/5 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-xs font-semibold text-foreground">
                       Resolved by {alert.resolvedBy?.name ?? "—"}

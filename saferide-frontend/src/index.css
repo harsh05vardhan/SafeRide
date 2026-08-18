@@ -5,12 +5,36 @@
 @layer base {
   :root {
     --primary: 45 100% 51%; /* #FFC107 */
+    --primary-foreground: 222 47% 11%; /* #0F172A - text drawn on top of primary-colored surfaces */
     --dark: 222 47% 11%; /* #0F172A */
     --background: 210 40% 98%; /* #F8FAFC */
     --foreground: 215 25% 27%; /* #1E293B */
     --muted: 215 16% 47%; /* #64748B */
+    --muted-foreground: 215 20% 65%; /* #94A3B8 */
     --success: 142 71% 45%; /* #22C55E */
     --danger: 0 84% 60%; /* #EF4444 */
+    --card: 0 0% 100%; /* #FFFFFF - the white every card/panel surface uses */
+    --card-border: 214 32% 91%; /* #E2E8F0 - slate-200, the border every card uses */
+  }
+
+  /* Dark mode - see contexts/ThemeContext.tsx for the toggle that applies/removes this class.
+     Every existing bg-primary/text-dark/bg-background/text-foreground/text-muted/bg-success/
+     bg-danger usage across the whole app re-themes automatically since tailwind.config.js's
+     color tokens all resolve through these same variables - nothing in any page needed to
+     change to pick this up. Card surfaces (bg-white/border-slate-200) were additionally given
+     dark: variants pointing at bg-card/border-card-border wherever that literal pattern appears. */
+  .dark {
+    --primary: 45 97% 54%; /* #FCC419 - a touch brighter, reads better against a dark background */
+    --primary-foreground: 222 47% 8%;
+    --dark: 210 40% 96%; /* headings go near-white */
+    --background: 222 47% 7%; /* deep navy page background */
+    --foreground: 210 30% 88%;
+    --muted: 215 16% 63%;
+    --muted-foreground: 215 15% 42%;
+    --success: 142 65% 50%;
+    --danger: 0 84% 65%;
+    --card: 222 39% 12%;
+    --card-border: 217 30% 21%;
   }
 
   html,
@@ -38,4 +62,20 @@
 }
 .saferide-location-pulse {
   animation: saferide-location-pulse 2s ease-out infinite;
+}
+
+/* FindingDriverPage's "searching" radar rings, centered on the pickup point - three staggered
+   rings via animation-delay on the same keyframe, not three separately-authored animations. */
+@keyframes saferide-radar-pulse {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+.saferide-radar-ring {
+  animation: saferide-radar-pulse 2.4s ease-out infinite;
 }

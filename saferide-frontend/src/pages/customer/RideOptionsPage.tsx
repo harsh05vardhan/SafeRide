@@ -48,7 +48,7 @@ export default function RideOptionsPage() {
         <ArrowLeft size={16} /> Back
       </button>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Trip</p>
         <div className="mt-2 space-y-1 text-sm">
           <p className="truncate font-medium text-foreground">{pickup.label}</p>
@@ -77,11 +77,11 @@ export default function RideOptionsPage() {
                 onClick={() => setVehicleType(type)}
                 whileTap={{ scale: 0.98 }}
                 className={cn(
-                  "flex w-full items-center gap-4 rounded-2xl border-2 bg-white p-4 text-left transition-all",
-                  isSelected ? "border-primary bg-primary/5 shadow-md" : "border-slate-200 hover:border-slate-300",
+                  "flex w-full items-center gap-4 rounded-2xl border-2 bg-white dark:bg-card p-4 text-left transition-all",
+                  isSelected ? "border-primary bg-primary/5 shadow-md" : "border-slate-200 dark:border-card-border hover:border-slate-300 dark:border-slate-600",
                 )}
               >
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-dark">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-white/10 text-dark">
                   <Icon size={26} />
                 </div>
                 <div className="flex-1">

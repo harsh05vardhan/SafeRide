@@ -11,7 +11,7 @@ interface BaseStateViewProps {
 
 export function EmptyState({ icon: Icon = Inbox, title, description, actionLabel, onAction }: BaseStateViewProps & { title: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-14 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 px-6 py-14 text-center">
       <Icon size={32} className="mb-1 text-muted" />
       <p className="font-semibold text-foreground">{title}</p>
       {description && <p className="max-w-sm text-sm text-muted">{description}</p>}

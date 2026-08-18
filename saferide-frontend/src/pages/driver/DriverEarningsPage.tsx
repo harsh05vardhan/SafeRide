@@ -90,7 +90,7 @@ export default function DriverEarningsPage() {
         <StatCard icon={Route} label="Distance driven" value={`${totalDistance.toFixed(0)} km`} />
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
         <p className="mb-4 text-sm font-semibold text-dark">Earnings by day</p>
         {fareLoading ? (
           <Skeleton className="h-56 w-full" />
@@ -122,7 +122,7 @@ export default function DriverEarningsPage() {
         ) : (
           <div className="space-y-2">
             {rows.slice(0, 20).map(({ ride, fare }) => (
-              <div key={ride.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={ride.id} className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{ride.pickupAddress}</p>
                   <p className="truncate text-xs text-muted">→ {ride.destinationAddress}</p>

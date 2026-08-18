@@ -27,6 +27,7 @@ import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
 import { DriverMarker } from "@/components/map/DriverMarker";
 import { RouteLine } from "@/components/map/RouteLine";
+import { SearchRadarMarker } from "@/components/map/SearchRadarMarker";
 import { Button } from "@/components/common/Button";
 import { Badge } from "@/components/common/Badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -220,9 +221,9 @@ export default function RideTrackingPage() {
           <p className="mt-1 text-sm text-muted">Hope you had a safe trip!</p>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
           <RouteSummary pickup={ride.pickupAddress} destination={ride.destinationAddress} />
-          <div className="my-4 border-t border-dashed border-slate-200" />
+          <div className="my-4 border-t border-dashed border-slate-200 dark:border-card-border" />
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-muted">Fare</span>
             <span className="text-xl font-extrabold text-dark">{fare ? `₹${fare.totalFare.toFixed(0)}` : "—"}</span>
@@ -233,7 +234,7 @@ export default function RideTrackingPage() {
         </div>
 
         {ride.status === "PAYMENT_PENDING" && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mt-4 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
             <Button className="w-full" size="lg" onClick={payNow} isLoading={isPaying}>
               Pay {fare ? `₹${fare.totalFare.toFixed(0)}` : "now"}
             </Button>
@@ -241,7 +242,7 @@ export default function RideTrackingPage() {
         )}
 
         {ride.status === "PAYMENT_COMPLETED" && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mt-4 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
             <p className="text-sm font-semibold text-dark">Rate your driver</p>
             <div className="mt-3 flex justify-center">
               <RatingStars value={ratingScore} onChange={setRatingScore} />
@@ -252,7 +253,7 @@ export default function RideTrackingPage() {
               rows={3}
               maxLength={500}
               placeholder="Anything you'd like to add? (optional)"
-              className="mt-3 w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="mt-3 w-full resize-none rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
             <Button className="mt-3 w-full" onClick={submitRating} isLoading={isSubmittingRating} disabled={ratingScore === 0}>
               Submit rating
@@ -261,7 +262,7 @@ export default function RideTrackingPage() {
         )}
 
         {ride.status === "RATED" && submittedRating && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mt-4 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
             <p className="text-sm font-semibold text-dark">Your rating</p>
             <div className="mt-2 flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -301,6 +302,9 @@ export default function RideTrackingPage() {
     // fixed bottom nav - the real cause behind "no cancel option" reports, not a logic bug.
     <div className="absolute inset-0 w-full">
       <MapView center={center} zoom={14} className="absolute inset-0">
+        {ride.status === "SEARCHING_DRIVER" && (
+          <SearchRadarMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} />
+        )}
         <PickupMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} address={ride.pickupAddress} />
         <DestinationMarker latitude={ride.destinationLatitude} longitude={ride.destinationLongitude} address={ride.destinationAddress} />
         <RouteLine from={[ride.pickupLatitude, ride.pickupLongitude]} to={[ride.destinationLatitude, ride.destinationLongitude]} />
@@ -332,7 +336,7 @@ export default function RideTrackingPage() {
           animate={{ opacity: 1, y: 0 }}
           className="absolute inset-x-0 top-16 flex justify-center px-4"
         >
-          <div className="rounded-2xl bg-white px-6 py-4 text-center shadow-lg">
+          <div className="rounded-2xl bg-white dark:bg-card px-6 py-4 text-center shadow-lg">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Share this OTP with your driver</p>
             <p className="mt-1 text-3xl font-extrabold tracking-[0.4em] text-dark">{ride.otp}</p>
           </div>
@@ -343,9 +347,9 @@ export default function RideTrackingPage() {
       <div className="absolute inset-x-0 bottom-0 p-4">
         <div className="mx-auto max-w-md space-y-3">
           {ride.driver && (
-            <div className="rounded-2xl bg-white p-4 shadow-lg">
+            <div className="rounded-2xl bg-white dark:bg-card p-4 shadow-lg">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-lg font-bold text-dark">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 text-lg font-bold text-dark">
                   {ride.driver.name.charAt(0)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -356,14 +360,14 @@ export default function RideTrackingPage() {
                   </p>
                 </div>
                 <button
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-dark"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 text-dark"
                   onClick={() => showToast("Calling is coming soon.", "info")}
                   aria-label="Call driver"
                 >
                   <Phone size={16} />
                 </button>
                 <button
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-dark"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 text-dark"
                   onClick={() => showToast("Chat is coming soon.", "info")}
                   aria-label="Chat with driver"
                 >
@@ -376,14 +380,14 @@ export default function RideTrackingPage() {
 
           <div className="flex gap-2">
             <button
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-xs font-semibold text-foreground shadow"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white dark:bg-card py-2.5 text-xs font-semibold text-foreground shadow"
               onClick={() => setShowShareDialog(true)}
             >
               <ShieldAlert size={14} /> Share Ride
             </button>
             {canCancel && (
               <button
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-xs font-semibold text-danger shadow"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white dark:bg-card py-2.5 text-xs font-semibold text-danger shadow"
                 onClick={() => setShowCancelConfirm(true)}
               >
                 <X size={14} /> Cancel
@@ -424,7 +428,7 @@ export default function RideTrackingPage() {
 
 function RouteSummary({ pickup, destination, compact }: { pickup: string; destination: string; compact?: boolean }) {
   return (
-    <div className={compact ? "mt-3 space-y-1 border-t border-slate-100 pt-3 text-xs" : "space-y-1.5 text-sm"}>
+    <div className={compact ? "mt-3 space-y-1 border-t border-slate-100 dark:border-card-border pt-3 text-xs" : "space-y-1.5 text-sm"}>
       <p className="flex items-start gap-2">
         <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-dark" />
         <span className="truncate text-foreground">{pickup}</span>

@@ -133,7 +133,7 @@ export default function LoginPage() {
       {/* Form card - a bottom-sheet look on mobile, a centered card on larger screens */}
       <div className="mt-6 flex justify-center px-0 sm:mt-8 sm:px-4">
         <motion.div
-          className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-xl shadow-slate-900/10 sm:max-w-lg sm:rounded-3xl sm:p-8"
+          className="w-full max-w-md rounded-t-3xl bg-white dark:bg-card p-6 shadow-xl shadow-slate-900/10 sm:max-w-lg sm:rounded-3xl sm:p-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
@@ -186,7 +186,7 @@ export default function LoginPage() {
             </div>
 
             <label className="flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/50" />
+              <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary/50" />
               Remember me
             </label>
 
@@ -216,7 +216,7 @@ export default function LoginPage() {
                 type="button"
                 disabled
                 title="Coming soon"
-                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-xs font-medium text-muted opacity-70"
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-card-border text-xs font-medium text-muted opacity-70"
               >
                 {mark}
                 <span className="hidden sm:inline">{name}</span>

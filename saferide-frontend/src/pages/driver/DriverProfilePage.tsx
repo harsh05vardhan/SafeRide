@@ -222,14 +222,14 @@ export default function DriverProfilePage() {
         </div>
 
         {showVehicleForm && (
-          <form onSubmit={vehicleForm.handleSubmit(onRegisterVehicle)} className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" noValidate>
+          <form onSubmit={vehicleForm.handleSubmit(onRegisterVehicle)} className="mb-3 space-y-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm" noValidate>
             <div>
               <Label htmlFor="vehicleType">Vehicle type</Label>
               <div className="grid grid-cols-3 gap-2">
                 {(["MINI", "SEDAN", "SUV"] as VehicleType[]).map((type) => (
                   <label
                     key={type}
-                    className="flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 py-2 text-sm font-medium has-[:checked]:border-primary has-[:checked]:bg-primary/10"
+                    className="flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 py-2 text-sm font-medium has-[:checked]:border-primary has-[:checked]:bg-primary/10"
                   >
                     <input type="radio" value={type} className="sr-only" {...vehicleForm.register("vehicleType")} />
                     {type}
@@ -269,10 +269,10 @@ export default function DriverProfilePage() {
           {vehiclesPending ? (
             <Skeleton className="h-20 w-full rounded-2xl" />
           ) : vehicles?.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">No vehicles added yet.</p>
+            <p className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 text-center text-sm text-muted">No vehicles added yet.</p>
           ) : (
             vehicles?.map((vehicle) => (
-              <div key={vehicle.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={vehicle.id} className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
                     {vehicle.vehicleModel} · {vehicle.vehicleType}
@@ -315,12 +315,12 @@ export default function DriverProfilePage() {
         </div>
 
         {showDocForm && (
-          <form onSubmit={documentForm.handleSubmit(onUploadDocument)} className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" noValidate>
+          <form onSubmit={documentForm.handleSubmit(onUploadDocument)} className="mb-3 space-y-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm" noValidate>
             <div>
               <Label htmlFor="documentType">Document type</Label>
               <select
                 id="documentType"
-                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="h-11 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-card px-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
                 {...documentForm.register("documentType")}
               >
                 {(["DRIVING_LICENSE", "VEHICLE_REGISTRATION", "INSURANCE", "IDENTITY_PROOF", "PROFILE_PHOTO"] as DocumentType[]).map((type) => (
@@ -346,10 +346,10 @@ export default function DriverProfilePage() {
           {documentsPending ? (
             <Skeleton className="h-16 w-full rounded-2xl" />
           ) : documents?.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">No documents submitted yet.</p>
+            <p className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 text-center text-sm text-muted">No documents submitted yet.</p>
           ) : (
             documents?.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={doc.id} className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">{doc.documentType.replaceAll("_", " ")}</p>
                   <a href={doc.documentUrl} target="_blank" rel="noreferrer" className="truncate text-xs text-dark underline">
@@ -365,7 +365,7 @@ export default function DriverProfilePage() {
 
       <Link
         to="/driver/complaints"
-        className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+        className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm"
       >
         <div className="flex items-center gap-3">
           <MessageSquareWarning size={18} className="text-dark" />
@@ -378,7 +378,7 @@ export default function DriverProfilePage() {
       {settings?.supportPhoneNumber && (
         <a
           href={`tel:${settings.supportPhoneNumber}`}
-          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm"
         >
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-dark">

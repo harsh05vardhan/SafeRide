@@ -68,7 +68,7 @@ export default function RegisterPage() {
           <span className="text-lg font-extrabold text-dark">SafeRide</span>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-6 shadow-sm sm:p-8">
           <h1 className="text-2xl font-bold text-dark">Create your account</h1>
           <p className="mt-1 text-sm text-muted">Book rides or start driving with SafeRide.</p>
 
@@ -84,7 +84,7 @@ export default function RegisterPage() {
                   onClick={() => setValue("role", option)}
                   className={cn(
                     "flex flex-col items-center gap-1.5 rounded-xl border-2 p-4 text-sm font-semibold transition-all",
-                    isSelected ? "border-primary bg-primary/10 text-dark" : "border-slate-200 text-muted hover:border-slate-300",
+                    isSelected ? "border-primary bg-primary/10 text-dark" : "border-slate-200 dark:border-card-border text-muted hover:border-slate-300 dark:border-slate-600",
                   )}
                 >
                   <Icon size={22} />

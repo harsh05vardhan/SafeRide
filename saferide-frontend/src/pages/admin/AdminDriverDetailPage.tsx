@@ -100,7 +100,7 @@ export default function AdminDriverDetailPage() {
             </div>
           </div>
 
-          <div className="my-4 border-t border-slate-100" />
+          <div className="my-4 border-t border-slate-100 dark:border-card-border" />
 
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
             <div>
@@ -186,13 +186,13 @@ export default function AdminDriverDetailPage() {
           <MessageSquare size={16} /> Recent feedback
         </h2>
         {recentRatings.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">
+          <p className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 text-center text-sm text-muted">
             No ratings yet.
           </p>
         ) : (
           <div className="space-y-2">
             {recentRatings.map((rating) => (
-              <div key={rating.rideId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={rating.rideId} className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-0.5">
                     {[1, 2, 3, 4, 5].map((star) => (
@@ -218,13 +218,13 @@ export default function AdminDriverDetailPage() {
           <Car size={16} /> Vehicles
         </h2>
         {vehicles.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">
+          <p className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 text-center text-sm text-muted">
             No vehicles registered yet.
           </p>
         ) : (
           <div className="space-y-2">
             {vehicles.map((vehicle) => (
-              <div key={vehicle.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={vehicle.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
                     {vehicle.vehicleModel} · {vehicle.vehicleType} {vehicle.active && "· Active"}
@@ -269,13 +269,13 @@ export default function AdminDriverDetailPage() {
           <FileText size={16} /> Documents
         </h2>
         {documents.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center text-sm text-muted">
+          <p className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 text-center text-sm text-muted">
             No documents submitted yet.
           </p>
         ) : (
           <div className="space-y-2">
             {documents.map((doc) => (
-              <div key={doc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={doc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
                 <div>
                   <p className="text-sm font-semibold text-foreground">{doc.documentType.replaceAll("_", " ")}</p>
                   <a href={doc.documentUrl} target="_blank" rel="noreferrer" className="text-xs text-dark underline">

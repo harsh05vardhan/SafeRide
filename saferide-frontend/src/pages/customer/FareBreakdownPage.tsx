@@ -73,7 +73,7 @@ export default function FareBreakdownPage() {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        className="mt-5 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm"
       >
         {isPending ? (
           <div className="space-y-3">
@@ -92,7 +92,7 @@ export default function FareBreakdownPage() {
               <Row label="Platform Fee" value={fare.platformFee} />
               {fare.discount > 0 && <Row label="Discount" value={-fare.discount} highlight="text-success" />}
             </dl>
-            <div className="my-4 border-t border-dashed border-slate-200" />
+            <div className="my-4 border-t border-dashed border-slate-200 dark:border-card-border" />
             <div className="flex items-center justify-between">
               <span className="text-base font-bold text-dark">Total</span>
               <span className="text-2xl font-extrabold text-dark">₹{fare.totalFare.toFixed(0)}</span>

@@ -64,7 +64,7 @@ export default function SafetyCenterPage() {
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-dark">
               <ShieldCheck size={20} />
@@ -73,7 +73,7 @@ export default function SafetyCenterPage() {
           </div>
           <Link
             to="/home"
-            className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-slate-50 sm:w-auto"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-card px-3.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-slate-50 dark:bg-white/5 sm:w-auto"
           >
             Book a ride
           </Link>
@@ -82,7 +82,7 @@ export default function SafetyCenterPage() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {SAFETY_CARDS.map(({ icon: Icon, title, description }) => (
-          <div key={title} className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={title} className="flex gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-dark">
               <Icon size={17} />
             </span>

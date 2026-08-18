@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { BookingProvider } from "@/contexts/BookingContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import AppRoutes from "@/routes/AppRoutes";
 
 const queryClient = new QueryClient({
@@ -17,18 +18,20 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <ToastProvider>
-          <AuthProvider>
-            <WebSocketProvider>
-              <BookingProvider>
-                <AppRoutes />
-              </BookingProvider>
-            </WebSocketProvider>
-          </AuthProvider>
-        </ToastProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <ToastProvider>
+            <AuthProvider>
+              <WebSocketProvider>
+                <BookingProvider>
+                  <AppRoutes />
+                </BookingProvider>
+              </WebSocketProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

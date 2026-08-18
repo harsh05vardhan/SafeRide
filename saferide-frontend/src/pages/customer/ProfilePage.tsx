@@ -52,7 +52,7 @@ export default function ProfilePage() {
       <h1 className="text-2xl font-extrabold text-dark">Profile</h1>
       <p className="mt-1 text-sm text-muted">Manage your account details.</p>
 
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mt-5 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm sm:p-6">
         {isPending || !profile ? (
           <div className="space-y-4">
             <Skeleton className="h-16 w-16 rounded-full" />
@@ -109,7 +109,7 @@ export default function ProfilePage() {
 
       <Link
         to="/complaints"
-        className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+        className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm"
       >
         <div className="flex items-center gap-3">
           <MessageSquareWarning size={18} className="text-dark" />

@@ -50,7 +50,7 @@ function UserMenu() {
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-slate-100">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-slate-100 dark:bg-white/10">
         <Avatar name={user.name} avatarUrl={user.avatarUrl} size={32} />
         <span className="hidden text-left leading-tight sm:block">
           <span className="block text-sm font-semibold text-foreground">{user.name.split(" ")[0]}</span>
@@ -60,11 +60,11 @@ function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-1.5 shadow-lg">
           <Link
             to="/profile"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-slate-50"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-slate-50 dark:bg-white/5"
           >
             <User size={15} /> Profile
           </Link>
@@ -73,7 +73,7 @@ function UserMenu() {
               setOpen(false);
               void logout().then(() => navigate("/login"));
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger hover:bg-slate-50"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger hover:bg-slate-50 dark:bg-white/5"
           >
             <LogOut size={15} /> Logout
           </button>
@@ -98,23 +98,23 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
       />
       <div
         className={cn(
-          "absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col bg-white shadow-xl transition-transform duration-200",
+          "absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col bg-white dark:bg-card shadow-xl transition-transform duration-200",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 p-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-card-border p-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <ShieldCheck size={20} />
             </div>
             <span className="text-lg font-extrabold tracking-tight text-dark">SafeRide</span>
           </div>
-          <button onClick={onClose} aria-label="Close menu" className="rounded-lg p-1.5 text-muted hover:bg-slate-100">
+          <button onClick={onClose} aria-label="Close menu" className="rounded-lg p-1.5 text-muted hover:bg-slate-100 dark:bg-white/10">
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex items-center gap-3 border-b border-slate-100 p-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-card-border p-4">
           <Avatar name={user.name} avatarUrl={user.avatarUrl} size={40} />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
@@ -131,7 +131,7 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
-                  isActive ? "bg-primary/15 text-dark" : "text-muted hover:bg-slate-50 hover:text-foreground",
+                  isActive ? "bg-primary/15 text-dark" : "text-muted hover:bg-slate-50 dark:bg-white/5 hover:text-foreground",
                 )
               }
             >
@@ -141,13 +141,13 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
           ))}
         </nav>
 
-        <div className="border-t border-slate-100 p-3">
+        <div className="border-t border-slate-100 dark:border-card-border p-3">
           <button
             onClick={() => {
               onClose();
               void logout().then(() => navigate("/login"));
             }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-danger hover:bg-slate-50"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-danger hover:bg-slate-50 dark:bg-white/5"
           >
             <LogOut size={18} /> Logout
           </button>
@@ -162,13 +162,13 @@ export function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-card-border bg-white/90 dark:bg-card/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-1">
             <button
               onClick={() => setDrawerOpen(true)}
               aria-label="Open menu"
-              className="-ml-1.5 rounded-lg p-1.5 text-dark hover:bg-slate-100 md:hidden"
+              className="-ml-1.5 rounded-lg p-1.5 text-dark hover:bg-slate-100 dark:bg-white/10 md:hidden"
             >
               <Menu size={22} />
             </button>
@@ -188,7 +188,7 @@ export function Navbar() {
                 className={({ isActive }) =>
                   cn(
                     "flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
-                    isActive ? "bg-primary/15 text-dark" : "text-muted hover:bg-slate-100 hover:text-foreground",
+                    isActive ? "bg-primary/15 text-dark" : "text-muted hover:bg-slate-100 dark:bg-white/10 hover:text-foreground",
                   )
                 }
               >
@@ -232,7 +232,7 @@ function BottomNavLink({ to, label, icon: Icon }: (typeof NAV_LINKS)[number]) {
 
 export function MobileBottomNav() {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center border-t border-slate-200 bg-white/95 backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center border-t border-slate-200 dark:border-card-border bg-white/95 dark:bg-card/95 backdrop-blur md:hidden">
       {BOTTOM_NAV_LEFT.map((link) => (
         <BottomNavLink key={link.to} {...link} />
       ))}

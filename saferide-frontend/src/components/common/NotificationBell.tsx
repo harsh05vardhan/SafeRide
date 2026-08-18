@@ -70,7 +70,7 @@ export function NotificationBell() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-slate-100 hover:text-foreground"
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-slate-100 dark:bg-white/10 hover:text-foreground"
       >
         <Bell size={18} />
         {unreadCount > 0 && (
@@ -87,9 +87,9 @@ export function NotificationBell() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-xl"
+            className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[90vw] rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-card-border px-4 py-3">
               <p className="text-sm font-semibold text-dark">Notifications</p>
               {unreadCount > 0 && (
                 <button
@@ -119,7 +119,7 @@ export function NotificationBell() {
                     key={notification.id}
                     onClick={() => !notification.read && void handleMarkAsRead(notification.id)}
                     className={cn(
-                      "flex w-full items-start gap-2.5 border-b border-slate-50 px-4 py-3 text-left transition-colors last:border-0 hover:bg-slate-50",
+                      "flex w-full items-start gap-2.5 border-b border-slate-50 px-4 py-3 text-left transition-colors last:border-0 hover:bg-slate-50 dark:bg-white/5",
                       !notification.read && "bg-primary/5",
                     )}
                   >

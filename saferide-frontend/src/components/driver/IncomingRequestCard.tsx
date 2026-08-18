@@ -44,7 +44,7 @@ export function IncomingRequestCard({ ride, onAccept, onDecline }: IncomingReque
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-2xl border-2 border-primary bg-white shadow-md"
+      className="overflow-hidden rounded-2xl border-2 border-primary bg-white dark:bg-card shadow-md"
     >
       <div className="flex items-center justify-between bg-primary/15 px-4 py-2.5">
         <p className="text-sm font-bold text-dark">New ride request</p>
@@ -64,7 +64,7 @@ export function IncomingRequestCard({ ride, onAccept, onDecline }: IncomingReque
           </p>
         </div>
 
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 dark:bg-white/5 px-3 py-2.5 text-sm">
           <span className="text-muted">{ride.distanceKm.toFixed(1)} km · {ride.estimatedDurationMinutes} min</span>
           {fare ? (
             <span className="font-bold text-dark">₹{fare.totalFare.toFixed(0)}</span>

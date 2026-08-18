@@ -10,7 +10,7 @@ describe("Badge", () => {
 
   it("defaults to the neutral variant", () => {
     render(<Badge>Default</Badge>);
-    expect(screen.getByText("Default")).toHaveClass("bg-slate-100");
+    expect(screen.getByText("Default")).toHaveClass("bg-slate-100 dark:bg-white/10");
   });
 
   it("applies the requested variant's classes", () => {

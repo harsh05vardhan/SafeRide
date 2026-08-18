@@ -50,12 +50,12 @@ export default function AdminSettingsPage() {
       <h1 className="text-2xl font-extrabold text-dark">Settings</h1>
       <p className="mt-1 text-sm text-muted">Your account, and platform-wide settings shown to customers and drivers.</p>
 
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mt-5 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
         <p className="mb-3 text-sm font-semibold text-foreground">My profile</p>
         {user && <AvatarEditor name={user.name} avatarUrl={user.avatarUrl} />}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mt-4 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-dark">
             <Phone size={16} />

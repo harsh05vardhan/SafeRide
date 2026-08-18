@@ -66,7 +66,7 @@ export function CreateAdminDialog({ open, onClose, onCreated }: CreateAdminDialo
           <motion.div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-card p-6 shadow-xl"
             initial={{ opacity: 0, scale: 0.94, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
@@ -77,7 +77,7 @@ export function CreateAdminDialog({ open, onClose, onCreated }: CreateAdminDialo
                 <h2 className="text-lg font-bold text-dark">Add another admin</h2>
                 <p className="mt-1 text-sm text-muted">They can log in immediately with the password you set below.</p>
               </div>
-              <button onClick={handleClose} aria-label="Close" className="rounded-lg p-1 text-muted hover:bg-slate-100">
+              <button onClick={handleClose} aria-label="Close" className="rounded-lg p-1 text-muted hover:bg-slate-100 dark:bg-white/10">
                 <X size={18} />
               </button>
             </div>

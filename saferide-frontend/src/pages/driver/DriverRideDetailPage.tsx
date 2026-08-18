@@ -198,10 +198,10 @@ export default function DriverRideDetailPage() {
       <div className="mx-auto max-w-md px-4 py-8 text-center">
         <CheckCircle2 size={48} className="mx-auto mb-3 text-success" />
         <h1 className="text-xl font-bold text-dark">Ride completed</h1>
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
+        <div className="mt-6 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-5 text-left shadow-sm">
           <p className="truncate text-sm text-foreground">{ride.pickupAddress}</p>
           <p className="truncate text-sm text-muted">→ {ride.destinationAddress}</p>
-          <div className="my-4 border-t border-dashed border-slate-200" />
+          <div className="my-4 border-t border-dashed border-slate-200 dark:border-card-border" />
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-muted">Fare earned</span>
             <span className="text-xl font-extrabold text-dark">{fare ? `₹${fare.totalFare.toFixed(0)}` : "—"}</span>
@@ -236,7 +236,7 @@ export default function DriverRideDetailPage() {
       </MapView>
 
       <div className="absolute inset-x-0 top-0 p-4">
-        <div className="mx-auto max-w-md rounded-2xl bg-white p-4 shadow-lg">
+        <div className="mx-auto max-w-md rounded-2xl bg-white dark:bg-card p-4 shadow-lg">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">{statusLabel(ride.status)}</p>
           <p className="mt-1 font-semibold text-foreground">{ride.customer.name}</p>
           <div className="mt-2 space-y-1.5 text-sm">
@@ -250,7 +250,7 @@ export default function DriverRideDetailPage() {
             </p>
           </div>
           {fare && (
-            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-sm">
+            <div className="mt-2 flex items-center justify-between border-t border-slate-100 dark:border-card-border pt-2 text-sm">
               <span className="text-muted">Locked fare</span>
               <span className="font-bold text-dark">₹{fare.totalFare.toFixed(0)}</span>
             </div>
@@ -261,11 +261,11 @@ export default function DriverRideDetailPage() {
       <div className="absolute inset-x-0 bottom-0 p-4">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-md space-y-3">
           {ride.status === "DRIVER_ACCEPTED" && (
-            <div className="rounded-2xl bg-white p-4 shadow-lg">
+            <div className="rounded-2xl bg-white dark:bg-card p-4 shadow-lg">
               <p className="mb-3 text-sm text-muted">Head to the pickup point, then mark yourself as arrived.</p>
               <div className="flex gap-2">
                 <button
-                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-dark"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-white/10 text-dark"
                   onClick={() => showToast("Calling is coming soon.", "info")}
                   aria-label="Call customer"
                 >
@@ -279,7 +279,7 @@ export default function DriverRideDetailPage() {
           )}
 
           {ride.status === "DRIVER_ARRIVED" && (
-            <div className="rounded-2xl bg-white p-4 shadow-lg">
+            <div className="rounded-2xl bg-white dark:bg-card p-4 shadow-lg">
               <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-dark">
                 <KeyRound size={15} /> Enter the customer's OTP
               </p>
@@ -300,7 +300,7 @@ export default function DriverRideDetailPage() {
           )}
 
           {ride.status === "RIDE_STARTED" && (
-            <div className="rounded-2xl bg-white p-4 shadow-lg">
+            <div className="rounded-2xl bg-white dark:bg-card p-4 shadow-lg">
               <p className="mb-3 text-sm text-muted">Trip in progress. Complete it once you reach the destination.</p>
               <Button className="w-full" size="lg" onClick={completeRide} isLoading={isActing}>
                 Complete Ride
@@ -310,7 +310,7 @@ export default function DriverRideDetailPage() {
 
           {canCancel && (
             <button
-              className="w-full rounded-xl bg-white py-2.5 text-xs font-semibold text-danger shadow"
+              className="w-full rounded-xl bg-white dark:bg-card py-2.5 text-xs font-semibold text-danger shadow"
               onClick={() => setShowCancelConfirm(true)}
             >
               Cancel ride

@@ -77,7 +77,7 @@ export default function PublicTrackingPage() {
       </MapView>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-lg">
+        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-white dark:bg-card px-4 py-2.5 shadow-lg">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <ShieldCheck size={16} />
           </div>
@@ -87,7 +87,7 @@ export default function PublicTrackingPage() {
       </div>
 
       <div className="absolute inset-x-0 bottom-0 p-4">
-        <div className="mx-auto max-w-md rounded-2xl bg-white p-5 shadow-lg">
+        <div className="mx-auto max-w-md rounded-2xl bg-white dark:bg-card p-5 shadow-lg">
           <Badge variant={isActive ? "primary" : trip.status === "CANCELLED" || trip.status === "DRIVER_CANCELLED" ? "danger" : "success"}>
             {STATUS_LABEL[trip.status]}
           </Badge>
@@ -104,7 +104,7 @@ export default function PublicTrackingPage() {
           </div>
 
           {trip.driverName && (
-            <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3 text-sm">
+            <div className="mt-3 flex items-center gap-2 border-t border-slate-100 dark:border-card-border pt-3 text-sm">
               <Car size={14} className="text-muted" />
               <span className="text-foreground">
                 {trip.driverName}

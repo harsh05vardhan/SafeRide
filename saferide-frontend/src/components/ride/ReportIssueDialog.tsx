@@ -66,7 +66,7 @@ export function ReportIssueDialog({ rideId, open, onClose }: ReportIssueDialogPr
           <motion.div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-card p-6 shadow-xl"
             initial={{ opacity: 0, scale: 0.94, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
@@ -84,7 +84,7 @@ export function ReportIssueDialog({ rideId, open, onClose }: ReportIssueDialogPr
                 id="complaint-type"
                 value={type}
                 onChange={(e) => setType(e.target.value as ComplaintType)}
-                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="h-11 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-card px-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
                 {(Object.entries(TYPE_LABELS) as [ComplaintType, string][]).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -103,7 +103,7 @@ export function ReportIssueDialog({ rideId, open, onClose }: ReportIssueDialogPr
                 rows={4}
                 maxLength={1000}
                 placeholder="Tell us what happened…"
-                className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full resize-none rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
 

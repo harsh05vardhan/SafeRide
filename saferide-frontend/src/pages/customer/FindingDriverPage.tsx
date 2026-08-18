@@ -12,6 +12,7 @@ import { MapView } from "@/components/map/MapView";
 import { PickupMarker } from "@/components/map/PickupMarker";
 import { DestinationMarker } from "@/components/map/DestinationMarker";
 import { RouteLine } from "@/components/map/RouteLine";
+import { SearchRadarMarker } from "@/components/map/SearchRadarMarker";
 import { Button } from "@/components/common/Button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { extractErrorMessage } from "@/services/api";
@@ -92,6 +93,9 @@ export default function FindingDriverPage() {
     // chrome that isn't actually there.
     <div className="relative h-screen w-full">
       <MapView center={center} zoom={14} className="absolute inset-0">
+        {ride.status === "SEARCHING_DRIVER" && (
+          <SearchRadarMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} />
+        )}
         <PickupMarker latitude={ride.pickupLatitude} longitude={ride.pickupLongitude} address={ride.pickupAddress} />
         <DestinationMarker latitude={ride.destinationLatitude} longitude={ride.destinationLongitude} address={ride.destinationAddress} />
         <RouteLine
@@ -104,15 +108,27 @@ export default function FindingDriverPage() {
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-5 py-3.5 shadow-lg"
+          className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white dark:bg-card px-5 py-3.5 shadow-lg"
         >
-          <motion.span
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-dark"
-          >
-            <Search size={16} />
-          </motion.span>
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+            <motion.span
+              className="absolute inset-0 rounded-full bg-primary/40"
+              animate={{ scale: [0.6, 1.6], opacity: [0.6, 0] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+            />
+            <motion.span
+              className="absolute inset-0 rounded-full bg-primary/40"
+              animate={{ scale: [0.6, 1.6], opacity: [0.6, 0] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut", delay: 0.7 }}
+            />
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+              className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-dark"
+            >
+              <Search size={16} />
+            </motion.span>
+          </span>
           <div>
             <p className="text-sm font-bold text-dark">Finding your driver</p>
             <p className="text-xs text-muted">
@@ -124,7 +140,7 @@ export default function FindingDriverPage() {
 
       <div className="absolute inset-x-0 bottom-0 p-4">
         <div className="mx-auto max-w-sm">
-          <Button variant="outline" className="w-full bg-white" onClick={() => setShowCancelConfirm(true)}>
+          <Button variant="outline" className="w-full bg-white dark:bg-card" onClick={() => setShowCancelConfirm(true)}>
             <X size={16} /> Cancel Ride
           </Button>
         </div>

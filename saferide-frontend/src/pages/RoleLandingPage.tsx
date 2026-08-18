@@ -41,7 +41,7 @@ export default function RoleLandingPage() {
           <Link
             key={to}
             to={to}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm transition-shadow hover:shadow-md"
+            className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-6 text-center shadow-sm transition-shadow hover:shadow-md"
           >
             <Icon size={28} className="text-dark" />
             <span className="font-semibold text-foreground">{label}</span>

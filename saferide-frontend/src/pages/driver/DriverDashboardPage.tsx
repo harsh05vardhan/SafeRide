@@ -103,7 +103,7 @@ export default function DriverDashboardPage() {
       {!profilePending && isVerified && !activeVehicle && (
         <Link
           to="/driver/profile"
-          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm"
         >
           <div className="flex items-center gap-3">
             <Car size={20} className="text-dark" />
@@ -120,7 +120,7 @@ export default function DriverDashboardPage() {
       <div
         className={cn(
           "relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-colors",
-          isOnline ? "border-success/30 bg-success/5" : "border-slate-200 bg-white",
+          isOnline ? "border-success/30 bg-success/5" : "border-slate-200 dark:border-card-border bg-white dark:bg-card",
         )}
       >
         <div className="flex items-center justify-between">
@@ -128,7 +128,7 @@ export default function DriverDashboardPage() {
             <span
               className={cn(
                 "flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
-                isOnline ? "bg-success/15 text-success" : "bg-slate-100 text-muted",
+                isOnline ? "bg-success/15 text-success" : "bg-slate-100 dark:bg-white/10 text-muted",
               )}
             >
               <Radio size={20} className={isOnline ? "animate-pulse" : undefined} />
@@ -152,7 +152,7 @@ export default function DriverDashboardPage() {
           >
             <span
               className={cn(
-                "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                "absolute left-1 top-1 h-6 w-6 rounded-full bg-white dark:bg-card shadow transition-transform",
                 isOnline ? "translate-x-6" : "translate-x-0",
               )}
             />
@@ -202,12 +202,12 @@ export default function DriverDashboardPage() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card shadow-sm">
         <div className="flex items-center justify-between p-4">
           <span className="text-sm text-muted">Verification status</span>
           <Badge variant={isVerified ? "success" : "primary"}>{profile?.verificationStatus ?? "—"}</Badge>
         </div>
-        <div className="flex items-center justify-between border-t border-slate-100 p-4">
+        <div className="flex items-center justify-between border-t border-slate-100 dark:border-card-border p-4">
           <span className="text-sm text-muted">Active vehicle</span>
           {activeVehicle ? (
             <span className="text-sm font-semibold text-foreground">

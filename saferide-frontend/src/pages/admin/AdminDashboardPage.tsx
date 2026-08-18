@@ -130,7 +130,7 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <button
           onClick={() => setShowCreateAdmin(true)}
-          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-md"
+          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 text-center shadow-sm hover:shadow-md"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-dark">
             <UserPlus size={18} />
@@ -139,7 +139,7 @@ export default function AdminDashboardPage() {
         </button>
         <Link
           to="/admin/drivers?status=PENDING"
-          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-md"
+          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 text-center shadow-sm hover:shadow-md"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-dark">
             <Car size={18} />
@@ -148,7 +148,7 @@ export default function AdminDashboardPage() {
         </Link>
         <Link
           to="/admin/complaints"
-          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-md"
+          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 text-center shadow-sm hover:shadow-md"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-dark">
             <MessageSquareWarning size={18} />
@@ -157,7 +157,7 @@ export default function AdminDashboardPage() {
         </Link>
         <Link
           to="/admin/safety"
-          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-md"
+          className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 text-center shadow-sm hover:shadow-md"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-danger/10 text-danger">
             <Siren size={18} />
@@ -188,7 +188,7 @@ export default function AdminDashboardPage() {
           ) : (
             <div className="space-y-2">
               {recentRides.map((ride) => (
-                <div key={ride.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                <div key={ride.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3.5 shadow-sm">
                   <Avatar name={ride.customer.name} avatarUrl={ride.customer.avatarUrl} size={32} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{ride.pickupAddress}</p>
@@ -226,7 +226,7 @@ export default function AdminDashboardPage() {
           ) : (
             <div className="space-y-2">
               {topDrivers.map((driver, i) => (
-                <div key={driver.driverId} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                <div key={driver.driverId} className="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-3.5 shadow-sm">
                   <span className="w-4 shrink-0 text-center text-xs font-bold text-muted">{i + 1}</span>
                   <Avatar name={driver.name} avatarUrl={driver.avatarUrl} size={32} />
                   <div className="min-w-0 flex-1">
@@ -265,7 +265,7 @@ export default function AdminDashboardPage() {
               <Link
                 key={driver.id}
                 to={`/admin/drivers/${driver.id}`}
-                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
               >
                 <div className="flex items-center gap-3">
                   <Avatar name={driver.user.name} avatarUrl={driver.user.avatarUrl} size={32} />
@@ -287,19 +287,19 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* System status - both genuinely inferred: this page only rendered because the API call above succeeded, which itself only works if the database is reachable. */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
         <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-dark">
           <span className="h-2 w-2 rounded-full bg-success" /> All systems operational
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-card-border bg-slate-50/60 dark:bg-white/5 p-3">
             <Server size={16} className="text-success" />
             <div>
               <p className="text-xs font-semibold text-foreground">API Server</p>
               <p className="text-[11px] text-muted">Operational</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-card-border bg-slate-50/60 dark:bg-white/5 p-3">
             <Database size={16} className="text-success" />
             <div>
               <p className="text-xs font-semibold text-foreground">Database</p>

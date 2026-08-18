@@ -45,7 +45,7 @@ export default function MyComplaintsPage() {
           <EmptyState icon={MessageSquareWarning} title="No reports filed" description="Anything you report about a ride will show up here." />
         ) : (
           data!.content.map((complaint) => (
-            <div key={complaint.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={complaint.id} className="rounded-2xl border border-slate-200 dark:border-card-border bg-white dark:bg-card p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">{TYPE_LABEL[complaint.type] ?? complaint.type}</p>
@@ -54,7 +54,7 @@ export default function MyComplaintsPage() {
                 <Badge variant={STATUS_VARIANT[complaint.status]}>{complaint.status.replaceAll("_", " ")}</Badge>
               </div>
               {complaint.adminNotes && (
-                <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-muted">
+                <p className="mt-2 border-t border-slate-100 dark:border-card-border pt-2 text-xs text-muted">
                   <span className="font-semibold text-foreground">Response: </span>
                   {complaint.adminNotes}
                 </p>
