@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Trash2, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, Users, UserPlus } from "lucide-react";
 import { adminUserService } from "@/services/adminUserService";
 import { Badge } from "@/components/common/Badge";
 import { Button } from "@/components/common/Button";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/common/Skeleton";
 import { EmptyState, ErrorState } from "@/components/common/StateViews";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AccountStatusBadge } from "@/components/admin/StatusBadges";
+import { CreateAdminDialog } from "@/components/admin/CreateAdminDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { extractErrorMessage } from "@/services/api";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(0);
   const [target, setTarget] = useState<AdminUserSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showCreateAdmin, setShowCreateAdmin] = useState(false);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -69,10 +71,23 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function onAdminCreated(name: string) {
+    setShowCreateAdmin(false);
+    showToast(`${name} can now log in as an admin`, "success");
+    await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-extrabold text-dark">Users</h1>
-      <p className="mt-1 text-sm text-muted">Every SafeRide account - customers, drivers and admins.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-dark">Users</h1>
+          <p className="mt-1 text-sm text-muted">Every SafeRide account - customers, drivers and admins.</p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreateAdmin(true)}>
+          <UserPlus size={14} /> Add admin
+        </Button>
+      </div>
 
       <div className="mt-5 flex gap-1 border-b border-slate-200">
         {TABS.map((tab) => (
@@ -178,6 +193,8 @@ export default function AdminUsersPage() {
         onConfirm={confirmDelete}
         onCancel={() => setTarget(null)}
       />
+
+      <CreateAdminDialog open={showCreateAdmin} onClose={() => setShowCreateAdmin(false)} onCreated={onAdminCreated} />
     </div>
   );
 }

@@ -1,17 +1,33 @@
 import type { UserSummary } from "./auth";
-import type { RideStatus } from "./ride";
+import type { RideDriverInfo, RideStatus } from "./ride";
 
 export type SafetyAlertStatus = "ACTIVE" | "RESOLVED";
 
+/**
+ * Mirrors the backend's SafetyAlertResponse - everything an admin needs to
+ * resolve an SOS without leaving this one screen: the full ride it
+ * happened on (both customer and driver, pickup/destination, current
+ * status), not just a bare ride id. resolvedBy/resolutionNotes are null
+ * until resolved.
+ */
 export interface SafetyAlert {
   id: number;
   rideId: number;
+  rideStatus: RideStatus;
+  pickupAddress: string;
+  destinationAddress: string;
+  customer: UserSummary;
+  driver?: RideDriverInfo | null;
   triggeredBy: UserSummary;
   latitude: number;
   longitude: number;
   status: SafetyAlertStatus;
   createdAt: string;
-  resolvedAt: string | null;
+  // Jackson omits these entirely (non_null inclusion) rather than sending an explicit null while
+  // an alert is still ACTIVE - optional, not just nullable, to match what actually arrives.
+  resolvedBy?: UserSummary | null;
+  resolvedAt?: string | null;
+  resolutionNotes?: string | null;
 }
 
 export interface SosRequest {

@@ -4,6 +4,7 @@ import com.saferide.auth.AuthenticatedUser;
 import com.saferide.exception.ResourceNotFoundException;
 import com.saferide.exception.UnauthorizedException;
 import com.saferide.ride.Ride;
+import com.saferide.ride.RideDriverInfoFactory;
 import com.saferide.ride.RideRepository;
 import com.saferide.safety.dto.PublicTripResponse;
 import com.saferide.safety.dto.SafetyAlertResponse;
@@ -40,6 +41,7 @@ public class SafetyService {
     private final SafetyAlertRepository safetyAlertRepository;
     private final TripShareRepository tripShareRepository;
     private final VehicleService vehicleService;
+    private final RideDriverInfoFactory rideDriverInfoFactory;
 
     @Transactional
     public SafetyAlertResponse triggerSos(AuthenticatedUser principal, Long rideId, SosRequest request) {
@@ -53,7 +55,8 @@ public class SafetyService {
         alert.setLongitude(request.longitude());
         alert.setStatus(SafetyAlertStatus.ACTIVE);
 
-        return SafetyAlertResponse.from(safetyAlertRepository.save(alert));
+        SafetyAlert saved = safetyAlertRepository.save(alert);
+        return SafetyAlertResponse.from(saved, rideDriverInfoFactory.from(ride));
     }
 
     /** Only the customer can generate a share link - "Share Ride" is a rider-safety feature in the UI, not something a driver initiates on someone else's trip. */

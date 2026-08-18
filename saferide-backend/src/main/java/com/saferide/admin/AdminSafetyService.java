@@ -3,6 +3,7 @@ package com.saferide.admin;
 import com.saferide.common.AuditLogService;
 import com.saferide.exception.InvalidSafetyAlertStateException;
 import com.saferide.exception.ResourceNotFoundException;
+import com.saferide.ride.RideDriverInfoFactory;
 import com.saferide.safety.SafetyAlert;
 import com.saferide.safety.SafetyAlertRepository;
 import com.saferide.safety.SafetyAlertStatus;
@@ -23,17 +24,24 @@ public class AdminSafetyService {
     private final SafetyAlertRepository safetyAlertRepository;
     private final AuditLogService auditLogService;
     private final UserService userService;
+    private final RideDriverInfoFactory rideDriverInfoFactory;
 
     @Transactional(readOnly = true)
     public Page<SafetyAlertResponse> list(SafetyAlertStatus statusFilter, Pageable pageable) {
         Page<SafetyAlert> page = statusFilter == null
                 ? safetyAlertRepository.findAll(pageable)
                 : safetyAlertRepository.findByStatusOrderByCreatedAtAsc(statusFilter, pageable);
-        return page.map(SafetyAlertResponse::from);
+        return page.map(this::toResponse);
     }
 
+    /**
+     * Resolving requires a real account of what happened and what was
+     * done about it - not just a status flip. {@code notes} is validated
+     * non-blank at the controller ({@link com.saferide.safety.dto} request
+     * DTO), not here.
+     */
     @Transactional
-    public SafetyAlertResponse resolve(Long adminUserId, Long alertId) {
+    public SafetyAlertResponse resolve(Long adminUserId, Long alertId, String notes) {
         SafetyAlert alert = safetyAlertRepository.findById(alertId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Safety alert", alertId));
         if (alert.getStatus() == SafetyAlertStatus.RESOLVED) {
@@ -43,9 +51,14 @@ public class AdminSafetyService {
         alert.setStatus(SafetyAlertStatus.RESOLVED);
         alert.setResolvedBy(userService.getById(adminUserId));
         alert.setResolvedAt(Instant.now());
+        alert.setResolutionNotes(notes);
         SafetyAlert saved = safetyAlertRepository.save(alert);
 
-        auditLogService.record(adminUserId, alert.getRide().getId(), "SAFETY_ALERT_RESOLVED", "Resolved SOS alert #" + alertId);
-        return SafetyAlertResponse.from(saved);
+        auditLogService.record(adminUserId, alert.getRide().getId(), "SAFETY_ALERT_RESOLVED", "Resolved SOS alert #" + alertId + ": " + notes);
+        return toResponse(saved);
+    }
+
+    private SafetyAlertResponse toResponse(SafetyAlert alert) {
+        return SafetyAlertResponse.from(alert, rideDriverInfoFactory.from(alert.getRide()));
     }
 }

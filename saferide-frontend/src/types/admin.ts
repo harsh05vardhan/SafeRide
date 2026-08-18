@@ -48,3 +48,11 @@ export interface AdminUserSummary {
   status: UserStatus;
   createdAt: string;
 }
+
+/** Mirrors CreateAdminRequest - the one real way to make an admin account (self-registration always refuses role: ADMIN). */
+export interface CreateAdminRequest {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+}

@@ -34,3 +34,12 @@ export const profileSchema = z.object({
   phone: z.string().regex(/^\+?[0-9]{10,15}$/, "Enter a valid 10-15 digit phone number"),
 });
 export type ProfileFormValues = z.infer<typeof profileSchema>;
+
+/** Mirrors CreateAdminRequest - same shape as registerSchema minus role/license, since a created admin is always ADMIN. */
+export const createAdminSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(100),
+  email: z.string().email("Enter a valid email address"),
+  phone: z.string().regex(/^\+?[0-9]{10,15}$/, "Enter a valid 10-15 digit phone number"),
+  password: z.string().regex(/^(?=.*[A-Za-z])(?=.*\d).{8,72}$/, "At least 8 characters, including a letter and a digit"),
+});
+export type CreateAdminFormValues = z.infer<typeof createAdminSchema>;

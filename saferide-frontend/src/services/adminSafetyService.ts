@@ -10,8 +10,9 @@ export const adminSafetyService = {
     return response.data.data;
   },
 
-  async resolve(alertId: number): Promise<SafetyAlert> {
-    const response = await api.put<ApiResponse<SafetyAlert>>(`/admin/safety/alerts/${alertId}/resolve`);
+  /** notes is required - a resolution with no record of what actually happened isn't a real resolution. */
+  async resolve(alertId: number, notes: string): Promise<SafetyAlert> {
+    const response = await api.put<ApiResponse<SafetyAlert>>(`/admin/safety/alerts/${alertId}/resolve`, { notes });
     return response.data.data;
   },
 };

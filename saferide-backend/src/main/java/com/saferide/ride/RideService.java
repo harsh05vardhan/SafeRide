@@ -125,6 +125,7 @@ public class RideService {
     private final RideEventPublisher eventPublisher;
     private final PaymentService paymentService;
     private final RatingService ratingService;
+    private final RideDriverInfoFactory rideDriverInfoFactory;
     /** Domain events (Phase 13) - notifications and, optionally, Kafka - deliberately separate from {@link #eventPublisher}'s WebSocket broadcasts, which are a different concern with a different audience. */
     private final ApplicationEventPublisher domainEvents;
 
@@ -621,21 +622,7 @@ public class RideService {
     }
 
     private RideResponse toResponse(Ride ride, boolean includeOtp) {
-        RideDriverInfo driverInfo = null;
-        if (ride.getDriver() != null) {
-            Driver driver = ride.getDriver();
-            // Shows the driver's *current* active vehicle. A real system would snapshot which
-            // vehicle was used at accept time; that field isn't in the Ride schema.
-            Optional<Vehicle> vehicle = vehicleService.getActiveVehicleEntity(driver.getId());
-            driverInfo = new RideDriverInfo(
-                    driver.getId(),
-                    driver.getUser().getName(),
-                    driver.getUser().getPhone(),
-                    driver.getRating(),
-                    vehicle.map(Vehicle::getVehicleModel).orElse(null),
-                    vehicle.map(Vehicle::getVehicleNumber).orElse(null),
-                    vehicle.map(Vehicle::getVehicleColor).orElse(null));
-        }
+        RideDriverInfo driverInfo = rideDriverInfoFactory.from(ride);
 
         return new RideResponse(
                 ride.getId(),

@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Siren, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Siren, CheckCircle2, MapPin, Phone, User, Car } from "lucide-react";
 import { adminSafetyService } from "@/services/adminSafetyService";
 import { useToast } from "@/contexts/ToastContext";
 import { Badge } from "@/components/common/Badge";
 import { Button } from "@/components/common/Button";
 import { Skeleton } from "@/components/common/Skeleton";
 import { EmptyState, ErrorState } from "@/components/common/StateViews";
+import { ResolveSafetyAlertDialog } from "@/components/admin/ResolveSafetyAlertDialog";
 import { extractErrorMessage } from "@/services/api";
 import { cn } from "@/lib/utils";
-import type { SafetyAlertStatus } from "@/types/safety";
+import type { SafetyAlert, SafetyAlertStatus } from "@/types/safety";
 
 const TABS: { label: string; value: SafetyAlertStatus | "ALL" }[] = [
   { label: "Active", value: "ACTIVE" },
@@ -18,13 +19,19 @@ const TABS: { label: string; value: SafetyAlertStatus | "ALL" }[] = [
   { label: "All", value: "ALL" },
 ];
 
+/** A real, working link - opens the exact spot in Google Maps so the SafeRide team can actually navigate there, not a decorative coordinate readout. */
+function mapsLink(lat: number, lng: number) {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
 export default function AdminSafetyPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("status") as SafetyAlertStatus | "ALL" | null) ?? "ACTIVE";
   const [page, setPage] = useState(0);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [resolvingAlert, setResolvingAlert] = useState<SafetyAlert | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
 
   const status = activeTab === "ALL" ? undefined : activeTab;
   const { data, isPending, isError, refetch } = useQuery({
@@ -38,16 +45,18 @@ export default function AdminSafetyPage() {
     setSearchParams(value === "ALL" ? {} : { status: value });
   }
 
-  async function resolve(alertId: number) {
-    setResolvingId(alertId);
+  async function resolve(notes: string) {
+    if (!resolvingAlert) return;
+    setIsResolving(true);
     try {
-      await adminSafetyService.resolve(alertId);
+      await adminSafetyService.resolve(resolvingAlert.id, notes);
       showToast("Alert resolved", "success");
       await queryClient.invalidateQueries({ queryKey: ["admin-safety-alerts"] });
+      setResolvingAlert(null);
     } catch (error) {
       showToast(extractErrorMessage(error), "error");
     } finally {
-      setResolvingId(null);
+      setIsResolving(false);
     }
   }
 
@@ -71,9 +80,9 @@ export default function AdminSafetyPage() {
         ))}
       </div>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-4 space-y-3">
         {isPending ? (
-          [...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-2xl" />)
+          [...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-2xl" />)
         ) : isError ? (
           <ErrorState description="Couldn't load safety alerts." onAction={() => refetch()} />
         ) : data!.content.length === 0 ? (
@@ -83,36 +92,95 @@ export default function AdminSafetyPage() {
             <div
               key={alert.id}
               className={cn(
-                "flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm",
+                "rounded-2xl border p-4 shadow-sm",
                 alert.status === "ACTIVE" ? "border-danger/40 bg-danger/5" : "border-slate-200 bg-white",
               )}
             >
-              <div className="flex items-start gap-3">
-                <div
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                    alert.status === "ACTIVE" ? "bg-danger/15 text-danger" : "bg-slate-100 text-muted",
-                  )}
-                >
-                  <Siren size={16} />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                      alert.status === "ACTIVE" ? "bg-danger/15 text-danger" : "bg-slate-100 text-muted",
+                    )}
+                  >
+                    <Siren size={16} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      SOS from {alert.triggeredBy.name} · Ride #{alert.rideId}
+                    </p>
+                    <p className="text-xs text-muted">{new Date(alert.createdAt).toLocaleString()}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {alert.triggeredBy.name} · Ride #{alert.rideId}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)} · {new Date(alert.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
                 <Badge variant={alert.status === "ACTIVE" ? "danger" : "success"}>{alert.status}</Badge>
-                {alert.status === "ACTIVE" && (
-                  <Button size="sm" isLoading={resolvingId === alert.id} onClick={() => resolve(alert.id)}>
-                    Mark resolved
-                  </Button>
-                )}
               </div>
+
+              <div className="my-3 border-t border-slate-100" />
+
+              {/* Ride detail - route + current status, so the admin doesn't have to look this up separately. */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate text-foreground">{alert.pickupAddress}</p>
+                  <p className="truncate text-xs text-muted">→ {alert.destinationAddress}</p>
+                </div>
+                <Badge variant="neutral">{alert.rideStatus.replaceAll("_", " ")}</Badge>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                    <User size={12} /> Customer
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{alert.customer.name}</p>
+                  <a href={`tel:${alert.customer.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
+                    <Phone size={11} /> {alert.customer.phone}
+                  </a>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                    <Car size={12} /> Driver
+                  </p>
+                  {alert.driver ? (
+                    <>
+                      <p className="mt-1 text-sm font-medium text-foreground">{alert.driver.name}</p>
+                      <a href={`tel:${alert.driver.phone}`} className="flex items-center gap-1 text-xs text-dark hover:underline">
+                        <Phone size={11} /> {alert.driver.phone}
+                      </a>
+                      {alert.driver.vehicleNumber && (
+                        <p className="mt-0.5 text-xs text-muted">
+                          {alert.driver.vehicleModel} · {alert.driver.vehicleNumber}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted">No driver assigned yet</p>
+                  )}
+                </div>
+              </div>
+
+              <a
+                href={mapsLink(alert.latitude, alert.longitude)}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex items-center gap-1.5 text-xs font-medium text-dark hover:underline"
+              >
+                <MapPin size={13} /> Open location in Google Maps ({alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)})
+              </a>
+
+              {alert.status === "RESOLVED" ? (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-foreground">
+                    Resolved by {alert.resolvedBy?.name ?? "—"}
+                    {alert.resolvedAt && ` · ${new Date(alert.resolvedAt).toLocaleString()}`}
+                  </p>
+                  {alert.resolutionNotes && <p className="mt-1 text-sm text-muted">{alert.resolutionNotes}</p>}
+                </div>
+              ) : (
+                <Button size="sm" className="mt-3" onClick={() => setResolvingAlert(alert)}>
+                  Resolve
+                </Button>
+              )}
             </div>
           ))
         )}
@@ -131,6 +199,13 @@ export default function AdminSafetyPage() {
           </Button>
         </div>
       )}
+
+      <ResolveSafetyAlertDialog
+        open={!!resolvingAlert}
+        isLoading={isResolving}
+        onConfirm={resolve}
+        onCancel={() => setResolvingAlert(null)}
+      />
     </div>
   );
 }

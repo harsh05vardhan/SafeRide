@@ -137,5 +137,51 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/admin/users/1").header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/users/admins")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Sneaky Admin","email":"sneaky@example.com","phone":"9633300099","password":"Password123!"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    /** The one legitimate way an admin account ever comes into existence outside DevDataSeeder/tests - AuthService#register refuses role: ADMIN outright, so this endpoint is the real path. */
+    @Test
+    void anExistingAdminCanCreateAnotherAdminWhoCanImmediatelyLogIn() throws Exception {
+        String adminToken = provisionAdminAndLogin("user-admin-creator@example.com", "9633300009");
+
+        String createBody = mockMvc.perform(post("/api/admin/users/admins")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Second Admin","email":"second-admin@example.com","phone":"9633300010","password":"Password123!"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.user.email").value("second-admin@example.com"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(createBody).at("/data/user/roles/0").asText()).isEqualTo("ADMIN");
+
+        String newAdminBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"second-admin@example.com\",\"password\":\"Password123!\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(newAdminBody).at("/data/user/roles/0").asText()).isEqualTo("ADMIN");
+    }
+
+    @Test
+    void creatingAnAdminWithADuplicateEmailIsRejected() throws Exception {
+        String adminToken = provisionAdminAndLogin("user-admin-dup@example.com", "9633300011");
+
+        mockMvc.perform(post("/api/admin/users/admins")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Duplicate","email":"user-admin-dup@example.com","phone":"9633300012","password":"Password123!"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"));
     }
 }

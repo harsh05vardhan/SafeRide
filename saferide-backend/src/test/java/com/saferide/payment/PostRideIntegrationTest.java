@@ -289,13 +289,32 @@ class PostRideIntegrationTest extends AbstractIntegrationTest {
 
         String adminList = mockMvc.perform(get("/api/admin/safety/alerts?status=ACTIVE").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].rideId").value(rideId))
+                .andExpect(jsonPath("$.data.content[0].customer.email").value("sos-customer1@example.com"))
+                .andExpect(jsonPath("$.data.content[0].driver.name").exists())
                 .andReturn().getResponse().getContentAsString();
         assertThat(objectMapper.readTree(adminList).at("/data/content").findValuesAsText("id")).contains(String.valueOf(alertId));
 
-        mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve").header("Authorization", "Bearer " + adminToken))
+        // Resolving requires a real account of what happened - an empty/missing body is rejected.
+        mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"Called the rider, false alarm - phone pocket-dialed the button.\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("RESOLVED"));
-        mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.data.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.data.resolvedBy.email").value(adminEmail))
+                .andExpect(jsonPath("$.data.resolutionNotes").value("Called the rider, false alarm - phone pocket-dialed the button."));
+
+        mockMvc.perform(put("/api/admin/safety/alerts/" + alertId + "/resolve")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"trying again\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_SAFETY_ALERT_STATE"));
     }

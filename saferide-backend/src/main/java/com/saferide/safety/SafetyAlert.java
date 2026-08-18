@@ -67,4 +67,8 @@ public class SafetyAlert extends Auditable {
 
     @Column(name = "resolved_at")
     private Instant resolvedAt;
+
+    /** What actually happened and what was done about it - required to resolve an alert (see AdminSafetyService#resolve), not just a status flip with no record of the outcome. */
+    @Column(name = "resolution_notes", length = 1000)
+    private String resolutionNotes;
 }

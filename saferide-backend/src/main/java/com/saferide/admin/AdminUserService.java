@@ -1,6 +1,8 @@
 package com.saferide.admin;
 
 import com.saferide.admin.dto.AdminUserSummaryResponse;
+import com.saferide.admin.dto.CreateAdminRequest;
+import com.saferide.common.AuditLogService;
 import com.saferide.driver.DriverOnlineStatus;
 import com.saferide.driver.DriverRepository;
 import com.saferide.exception.CannotDeleteUserException;
@@ -9,10 +11,12 @@ import com.saferide.matching.DriverGeoIndex;
 import com.saferide.user.RoleName;
 import com.saferide.user.User;
 import com.saferide.user.UserRepository;
+import com.saferide.user.UserService;
 import com.saferide.user.UserStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,10 +35,30 @@ public class AdminUserService {
     private final UserRepository userRepository;
     private final DriverRepository driverRepository;
     private final DriverGeoIndex geoIndex;
+    private final UserService userService;
+    private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public Page<AdminUserSummaryResponse> listUsers(RoleName role, Pageable pageable) {
         return userRepository.findAllByOptionalRole(role, pageable).map(AdminUserSummaryResponse::from);
+    }
+
+    /**
+     * The one legitimate way to create an admin account - {@code AuthService
+     * #register} refuses {@code role: ADMIN} outright, by design, so this
+     * exists so one admin isn't a single point of failure/workload for the
+     * whole platform without opening admin signup to the public. Any
+     * existing admin can create another; there's no separate "super admin"
+     * tier - matches {@code deleteUser}'s own reasoning that whoever
+     * controls the platform already controls this.
+     */
+    @Transactional
+    public AdminUserSummaryResponse createAdmin(Long creatingAdminUserId, CreateAdminRequest request) {
+        User created = userService.createUser(
+                request.name(), request.email(), request.phone(), passwordEncoder.encode(request.password()), RoleName.ADMIN);
+        auditLogService.record(creatingAdminUserId, "ADMIN_CREATED", "Created admin account for " + request.email());
+        return AdminUserSummaryResponse.from(created);
     }
 
     /**

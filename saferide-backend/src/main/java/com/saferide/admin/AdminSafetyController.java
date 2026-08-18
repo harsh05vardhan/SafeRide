@@ -3,8 +3,10 @@ package com.saferide.admin;
 import com.saferide.auth.AuthenticatedUser;
 import com.saferide.common.ApiResponse;
 import com.saferide.safety.SafetyAlertStatus;
+import com.saferide.safety.dto.ResolveSafetyAlertRequest;
 import com.saferide.safety.dto.SafetyAlertResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -14,6 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,7 +41,10 @@ public class AdminSafetyController {
     }
 
     @PutMapping("/{id}/resolve")
-    public ApiResponse<SafetyAlertResponse> resolve(@AuthenticationPrincipal AuthenticatedUser admin, @PathVariable Long id) {
-        return ApiResponse.ok("Alert resolved", adminSafetyService.resolve(admin.userId(), id));
+    public ApiResponse<SafetyAlertResponse> resolve(
+            @AuthenticationPrincipal AuthenticatedUser admin,
+            @PathVariable Long id,
+            @Valid @RequestBody ResolveSafetyAlertRequest request) {
+        return ApiResponse.ok("Alert resolved", adminSafetyService.resolve(admin.userId(), id, request.notes()));
     }
 }
