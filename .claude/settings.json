@@ -5,7 +5,20 @@
       "Bash(mvn -q -DskipTests package)",
       "Bash(mvn -q test -Dtest=RideIntegrationTest,RideStateMachineTest)",
       "Bash(mvn -q test -Dtest=DriverMatchScorerTest,ReliabilityCalculatorTest)",
-      "Bash(mvn -q test -Dtest=MatchingIntegrationTest)"
+      "Bash(mvn -q test -Dtest=MatchingIntegrationTest)",
+      "Bash(mvn -q -o test)",
+      "Bash(echo \"MVN_EXIT:$?\")",
+      "Read(//tmp/**)",
+      "Bash(grep -n \"Tests run\\\\|BUILD SUCCESS\\\\|BUILD FAILURE\\\\|ERROR\" /tmp/test_output.log | tail -40)",
+      "Bash(find ~/.m2/repository/org/springframework/boot -iname \"spring-boot-test-3.5.16.jar\" 2>/dev/null | head -1)",
+      "Read(//c/Users/paras/.m2/repository/org/springframework/boot/**)",
+      "Bash(unzip -l /c/Users/paras/.m2/repository/org/springframework/boot/spring-boot-test/3.5.16/spring-boot-test-3.5.16.jar)",
+      "Bash(find ~/.m2/repository/org/springframework -iname \"spring-websocket-*.jar\" -o -iname \"spring-messaging-*.jar\" 2>/dev/null | grep -v sources | grep -v javadoc)",
+      "Read(//c/Users/paras/.m2/repository/org/springframework/**)",
+      "Bash(mvn -q -o test-compile)",
+      "Bash(mvn -q -o test -Dtest=RideWebSocketIntegrationTest)",
+      "Bash(mvn -q -o test -Dtest=RideWebSocketIntegrationTest#customerReceivesStatusEventsForTheirOwnRide)",
+      "Bash(awk -F'[:,]' '{t+=$2; f+=$4; e+=$6; s+=$8} END {print \"Total tests:\", t, \"Failures:\", f, \"Errors:\", e, \"Skipped:\", s}')"
     ]
   }
 }
